@@ -1,0 +1,172 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum role {
+  ADMIN
+  STUDENT
+  TENTOR
+}
+
+enum classProgram {
+  UTBK
+  SKD
+}
+
+enum status {
+  INCOMPLETED
+  COMPLETED
+}
+
+enum difficulty {
+  HARD
+  MEDIUM
+  EASY
+}
+
+model admin {
+  idAdmin         Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  username        String        @default("")
+  password        String        @default("")
+  email           String        @default("")
+  role            role          @default(ADMIN)
+  phone_number    String        @default("")
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+}
+
+model user {
+  idUser          Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  userName        String        @default("")
+  password        String        @default("")
+  full_name       String        @default("")
+  email           String        @default("")
+  role            role          @default(STUDENT)
+  class           classes       @relation(fields: [classId], references: [idClass])
+  classId         Int
+  phone_number    String        @default("")
+  parent_full_name  String      @default("")
+  parent_phone_number String    @default("")
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  scores          scores[]
+  answers         answers[]
+}
+
+model classes {
+  idClass         Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  class_name      String        @default("")
+  class_program   classProgram  @default(UTBK)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  user            user[]
+  subjectClass    subjectClass[]
+}
+
+model subject {
+  idSubject       Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  subjectClass    subjectClass[]
+  subject_name    String        @default("")
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  quiz            quiz[]
+}
+
+model subjectClass {
+    subjectId     Int
+    classId       Int
+
+    subject       subject       @relation(fields: [subjectId], references: [idSubject])
+    class         classes       @relation(fields: [classId], references: [idClass])
+
+    @@id([subjectId, classId])
+} 
+
+model quiz {
+  idQuiz          Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  quiz_title      String        @default("")
+  quiz_date       DateTime      @default(now())
+  start_time      DateTime      
+  finished_time   DateTime      
+  duration        Int           @default(0)
+  status          status        @default(INCOMPLETED)
+  difficulty      difficulty    @default(EASY)
+  created_by      Int           @default(0)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  subject         subject       @relation(fields: [subjectId], references: [idSubject])
+  subjectId       Int
+
+  scores          scores[]
+  answers         answers[]
+  questions       questions[]
+}
+
+model scores {
+  idScore         Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  total_questions Int           @default(0)
+  corret          Int           @default(0)
+  wrong           Int           @default(0)
+  score           Int           @default(0)
+  start_time      DateTime
+  finished_time   DateTime
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  user            user          @relation(fields: [userId], references: [idUser])
+  userId          Int
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+  quizId          Int
+}
+
+model answers {
+  idAnswers       Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  student_answer  String        @default("")
+  is_Correct      Boolean       @default(false)
+  answered_at     DateTime      @default(now())
+
+  quizId          Int
+  userId          Int
+
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+  user            user          @relation(fields: [userId], references: [idUser])
+}
+
+model questions {
+  idQuestion      Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  question_text   String        @default("")
+  questions_image String        @default("")
+  option_a        String        @default("")
+  option_b        String        @default("")
+  option_c        String        @default("")
+  option_d        String        @default("")
+  correct_answers String        @default("")
+  difficulty      difficulty    @default(EASY)
+  poin            Int           @default(0)
+
+  quizId          Int
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+}
