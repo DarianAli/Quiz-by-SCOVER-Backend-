@@ -46,7 +46,7 @@ export const classUpdate = async (request: Request, response: Response) => {
         if (!idClass) {
             response.status(400).json({
                 status: false,
-                message: `idClas is required.`
+                message: `idClass is required.`
             })
             return
         }
@@ -58,7 +58,7 @@ export const classUpdate = async (request: Request, response: Response) => {
         if (!findClass) {
             response.status(404).json({
                 status: false,
-                message: `Class did not found.`
+                message: `Class not found.`
             })
             return
         }

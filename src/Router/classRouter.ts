@@ -6,6 +6,6 @@ const app = express()
 app.use(express.json())
 
 app.post("/create", [addData], createClass)
-app.put("/update", [updateData], classUpdate)
+app.put("/update/:idClass", [updateData], classUpdate)
 
 export default app
