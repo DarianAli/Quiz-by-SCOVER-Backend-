@@ -9,7 +9,7 @@ export const addDataSchema = Joi.object({
     full_name: Joi.string().required(),
     role: Joi.string().valid("TENTOR", "STUDENT").required(),
     phone_number: Joi.string().required(),
-    class: Joi.number().when('role', {
+    classId: Joi.number().when('role', {
     is: 'STUDENT',
     then: Joi.required(),
         otherwise: Joi.optional()

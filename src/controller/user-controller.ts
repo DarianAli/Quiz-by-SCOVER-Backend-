@@ -1,19 +1,10 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid"
-import { Jwt } from "jsonwebtoken";
 import { PrismaClient } from "../../generated/prisma/client"; 
 import bcrypt from "bcrypt"
-import { PrismaMariaDb } from "@prisma/adapter-mariadb"
 
-const adapter = new PrismaMariaDb({
-    host: process.env.DB_HOST!,
-    user: process.env.DB_USER!,
-    database: process.env.DB_NAME!,
-    password: process.env.DB_PASSWORD!,
-    port: Number(process.env.DB_PORT!),
-})
 
-const prisma = new PrismaClient({ errorFormat: "pretty", adapter })
+const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const createUser = async (request: Request, response: Response) => {
     try {
@@ -29,7 +20,7 @@ export const createUser = async (request: Request, response: Response) => {
         if (!findClass) {
             response.status(404).json({
                 status: false,
-                message: "Class that you mention did not found."
+                message: "Class not found."
             })
             return
         }
@@ -73,12 +64,12 @@ export const createUser = async (request: Request, response: Response) => {
                 parent_full_name: true,
                 parent_phone_number: true,
                 classId: true
-            }
+            },
         })
         response.status(201).json({
             status: true,
             data: newUser,
-            message: `Successfuly create a user.`
+            message: `Successfully create a user.`
         })
         return
     } catch (error) {

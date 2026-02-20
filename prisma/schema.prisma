@@ -5,12 +5,13 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 enum role {
@@ -71,7 +72,7 @@ model classes {
   idClass         Int           @id @default(autoincrement())
   uuid            String        @unique @default("")
   class_name      String        @default("")
-  class_program   classProgram  @default(UTBK)
+  class_program   classProgram?
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt
 
