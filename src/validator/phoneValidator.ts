@@ -1,5 +1,6 @@
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { Request, Response, NextFunction } from "express";
+import { valid } from "joi";
 
 export const phoneValidation =
   (fields: string[]) =>
@@ -7,7 +8,11 @@ export const phoneValidation =
     for (const field of fields) {
       const value = request.body[field];
 
-      if (!value || !isValidPhoneNumber(value, "ID")) {
+      if (value === undefined) {
+        continue
+      }
+
+      if (!isValidPhoneNumber(value, "ID")) {
         response.status(400).json({
           status: false,
           message: `${field} is invalid`,

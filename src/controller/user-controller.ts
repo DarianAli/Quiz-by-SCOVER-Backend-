@@ -1,10 +1,22 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid"
-import { PrismaClient } from "../../generated/prisma/client"; 
+import { PrismaClient, status } from "../../generated/prisma/client"; 
 import bcrypt from "bcrypt"
+import rateLimit from "express-rate-limit";
 
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
+
+export const registerLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 5,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many request"
+        })
+    }
+})
 
 export const createUser = async (request: Request, response: Response) => {
     try {
@@ -28,7 +40,8 @@ export const createUser = async (request: Request, response: Response) => {
             where: {
                 OR: [
                     {email},
-                    {userName}
+                    {userName},
+                    {phone_number}
                 ]
             }
         })
@@ -36,7 +49,7 @@ export const createUser = async (request: Request, response: Response) => {
         if (existingUser) {
             response.status(409).json({
                 status: false,
-                message: `User with this email or username already exists.`
+                message: `User with this email, username or phone number already exists.`
             })
             return
         }

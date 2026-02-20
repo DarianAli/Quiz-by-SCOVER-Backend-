@@ -3,12 +3,12 @@ import Joi from "joi";
 
 
 export const addDataSchema = Joi.object({
-    userName: Joi.string().min(3).max(30).required(),
+    userName: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).min(3).max(30).required().messages({"string.pattern.base": "Username hanya boleh huruf, angka, dan underscore"}),
     email: Joi.string().email().required(),
     password: Joi.string().min(6).max(128).required(),
     full_name: Joi.string().required(),
     role: Joi.string().valid("TENTOR", "STUDENT").required(),
-    phone_number: Joi.string().required(),
+    phone_number: Joi.string().min(10).max(13).required(),
     classId: Joi.number().when('role', {
     is: 'STUDENT',
     then: Joi.required(),
@@ -19,7 +19,7 @@ export const addDataSchema = Joi.object({
         then: Joi.required(),
         otherwise: Joi.optional()
     }),
-    parent_phone_number: Joi.string().when('role', {
+    parent_phone_number: Joi.string().min(10).max(13).when('role', {
         is: 'STUDENT',
         then: Joi.required(),
         otherwise: Joi.optional()
