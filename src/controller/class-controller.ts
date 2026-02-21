@@ -153,3 +153,46 @@ export const getById = async (request: Request, response: Response) => {
         })
     }
 }
+
+export const deleteClass = async (request: Request, response: Response) => {
+    try {
+        const { idClass } = request.params;
+
+        if (!idClass) {
+            response.status(400).json({
+                status: false,
+                message: `idClass is required.`
+            })
+            return
+        }
+
+        const findClass = await prisma.classes.findUnique({
+            where: { idClass: Number(idClass) }
+        })
+        
+        if (!findClass) {
+            response.status(404).json({
+                status: false,
+                message: `Class not found.`
+            })
+            return
+        }
+
+        const deleteData = await prisma.classes.delete({
+            where: { idClass: Number(idClass) }
+        })
+        response.status(200).json({
+            status: true,
+            data: deleteData,
+            message: `Data deleted.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+    }
+}
