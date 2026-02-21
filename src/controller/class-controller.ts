@@ -51,6 +51,13 @@ export const classUpdate = async (request: Request, response: Response) => {
             return
         }
 
+        if (Number.isNaN(idClass)) {
+            response.status(400).json({
+                status: false,
+                message: `ID muss be a number.`
+            })
+        }
+
         const findClass = await prisma.classes.findFirst({
             where: { idClass: Number(idClass) }
         })
@@ -126,6 +133,13 @@ export const getById = async (request: Request, response: Response) => {
             return
         }
 
+        if (Number.isNaN(idClass)) {
+            response.status(400).json({
+                status: false,
+                message: `ID muss be a number.`
+            })
+        }
+
         const findClass = await prisma.classes.findUnique({
             where: { idClass: Number(idClass) }
         })
@@ -164,6 +178,13 @@ export const deleteClass = async (request: Request, response: Response) => {
                 message: `idClass is required.`
             })
             return
+        }
+
+        if (Number.isNaN(idClass)) {
+            response.status(400).json({
+                status: false,
+                message: `ID muss be a number.`
+            })
         }
 
         const findClass = await prisma.classes.findUnique({
