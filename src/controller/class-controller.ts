@@ -87,3 +87,69 @@ export const classUpdate = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const getAllData = async (request: Request, response: Response) => {
+    try {
+        const search = request.query.search?.toString() ?? "";
+
+        const allData = await prisma.classes.findMany({
+            where: { 
+                class_name: { contains: search?.toString() }
+            }
+        })
+        response.status(200).json({
+            status: true,
+            data: allData,
+            message: `Showing all class data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const getById = async (request: Request, response: Response) => {
+    try {
+        const { idClass } = request.params;
+
+        if (!idClass) {
+            response.status(400).json({
+                status: false,
+                message: `idClass is required`
+            })
+            return
+        }
+
+        const findClass = await prisma.classes.findUnique({
+            where: { idClass: Number(idClass) }
+        })
+
+        if (!findClass) {
+            response.status(404).json({
+                status: false,
+                message: `Class not found.`
+            })
+            return
+        }
+
+        response.status(200).json({
+            status: true,
+            data: findClass,
+            message: `Show data by id.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+    }
+}
