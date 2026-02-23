@@ -3,7 +3,7 @@ import Joi from "joi";
 
 
 export const addDataSchema = Joi.object({
-    userName: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).min(3).max(30).required().messages({"string.pattern.base": "Username hanya boleh huruf, angka, dan underscore"}),
+    userName: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).min(3).max(30).required().messages({"string.pattern.base": "Username can only contain letters, numbers, and underscores"}),
     email: Joi.string().email().required(),
     password: Joi.string().min(6).max(128).required(),
     full_name: Joi.string().required(),

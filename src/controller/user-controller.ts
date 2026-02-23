@@ -96,6 +96,82 @@ export const createUser = async (request: Request, response: Response) => {
     }
 }
 
+export const getAllUser = async (request: Request, response: Response) => {
+    try {
+        const search = request.query.search?.toString() ?? "";
+
+        const allData = await prisma.user.findMany({
+            where: { 
+                userName: { contains: search?.toString() }
+            },
+            include: {
+                class: true
+            }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: allData,
+            message: `Show all data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const getById = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.params;
+        const id = Number(idUser)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: { idUser: id },
+            include: {
+                class: true
+            }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        response.status(200).json({
+            status: true,
+            data: findUser,
+            message: `Show user by ID.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+
 
 
 
