@@ -124,6 +124,7 @@ export const getAllData = async (request: Request, response: Response) => {
 export const getById = async (request: Request, response: Response) => {
     try {
         const { idClass } = request.params;
+        const id = Number(idClass)
 
         if (!idClass) {
             response.status(400).json({
@@ -133,15 +134,16 @@ export const getById = async (request: Request, response: Response) => {
             return
         }
 
-        if (Number.isNaN(idClass)) {
+        if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
                 message: `ID muss be a number.`
             })
+            return
         }
 
         const findClass = await prisma.classes.findUnique({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
 
         if (!findClass) {
