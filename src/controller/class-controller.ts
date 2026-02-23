@@ -183,7 +183,7 @@ export const deleteClass = async (request: Request, response: Response) => {
         if (Number.isNaN(idClass)) {
             response.status(400).json({
                 status: false,
-                message: `ID muss be a number.`
+                message: `ID must be a number.`
             })
         }
 

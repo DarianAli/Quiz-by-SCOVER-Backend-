@@ -2,12 +2,12 @@ import { Request, Response, NextFunction } from "express";
 import Joi from "joi";
 
 export const createDataSchema = Joi.object({
-    class_name: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).required().messages({"string.pattern.base": "Username hanya boleh huruf, angka, dan underscore"}),
+    class_name: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).required().messages({"string.pattern.base": "Class name hanya boleh huruf, angka, dan underscore"}),
     class_program: Joi.string().valid("UTBK", "SKD").optional()
 })
 
 export const updateDataSchema = Joi.object({
-    class_name: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).optional().messages({"string.pattern.base": "Username hanya boleh huruf, angka, dan underscore"}),
+    class_name: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).optional().messages({"string.pattern.base": "Class name hanya boleh huruf, angka, dan underscore"}),
     class_program: Joi.string().valid("UTBK", "SKD").optional()
 })
 
