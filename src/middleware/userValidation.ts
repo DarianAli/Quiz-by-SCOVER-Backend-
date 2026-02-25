@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import Joi from "joi";
+import { status } from "../../generated/prisma";
 
 
 export const addDataSchema = Joi.object({
@@ -26,6 +27,17 @@ export const addDataSchema = Joi.object({
     })
 })
 
+export const updateDataSchema = Joi.object({
+    userName: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).min(3).max(30).optional().messages({"string.pattern.base": "Username can only contain letters, numbers, and underscores"}),
+    email: Joi.string().email().optional(),
+    full_name: Joi.string().optional(),
+    role: Joi.string().valid("TENTOR", "STUDENT").optional(),
+    phone_number: Joi.string().min(10).max(13).optional(),
+    classId: Joi.number().optional(),
+    parent_full_name: Joi.string().optional(),
+    parent_phone_number: Joi.string().min(10).max(13).optional()
+})
+
 export const addData = (request: Request, response: Response, next: NextFunction) => {
     const { error } = addDataSchema.validate(request.body, { abortEarly: false })
 
@@ -39,4 +51,16 @@ export const addData = (request: Request, response: Response, next: NextFunction
     return next()
 }
 
+export const updateData = ( request: Request, response: Response, next: NextFunction ) => {
+    const { error } = updateDataSchema.validate(request.body, { abortEarly: false })
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            message: error.details.map(it => it.message).join()
+        })
+        return
+    }
+    return next()
+}
 
