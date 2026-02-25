@@ -2,8 +2,6 @@ import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid"
 import { PrismaClient, status } from "../../generated/prisma/client"; 
 import bcrypt from "bcrypt"
-import rateLimit from "express-rate-limit";
-import { boolean } from "joi";
 
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
@@ -140,7 +138,16 @@ export const getById = async (request: Request, response: Response) => {
 
         const findUser = await prisma.user.findUnique({
             where: { idUser: id },
-            include: {
+            select: {
+                idUser: true,
+                uuid: true,
+                userName: true,
+                email: true,
+                full_name: true,
+                role: true,
+                phone_number: true,
+                parent_full_name: true,
+                parent_phone_number: true,
                 class: true
             }
         })
@@ -228,13 +235,13 @@ export const updateUser = async (request: Request, response: Response) => {
 
         if (findDuplicates) {
             if (email && findDuplicates.email === email) {
-                return response.status(409).json({ message: `Email already used.` })
+                return response.status(409).json({ status: false, message: `Email already used.` })
             }
             if (userName && findDuplicates.userName === userName) {
-                return response.status(409).json({ message: "Username already used" });
+                return response.status(409).json({ status: false, message: "Username already used" });
             }
             if (phone_number && findDuplicates.phone_number === phone_number) {
-                return response.status(409).json({ message: "Phone number already used" });
+                return response.status(409).json({ status: false, message: "Phone number already used" });
             }
         }
 
@@ -320,14 +327,13 @@ export const updatePasswordAdmin = async (request: Request, response: Response) 
 
         const hashed = await bcrypt.hash(password, 10)
 
-        const dataNew = await prisma.user.update({
+        await prisma.user.update({
             where: { idUser: id },
             data: { password: hashed }
         })
 
         response.status(200).json({
             status: true,
-            data: dataNew,
             message: `Successfully update user password.`
         })
         return
@@ -344,7 +350,7 @@ export const updatePasswordAdmin = async (request: Request, response: Response) 
 
 export const updatePasswordUser = async (request: Request, response: Response) => {
     try {
-        const { idUser } = request.body;
+        const { idUser } = request.params;
         const id = Number(idUser)
         const { oldPassword, newPassword, confirmPassword } =  request.body;
 
@@ -381,7 +387,7 @@ export const updatePasswordUser = async (request: Request, response: Response) =
         if (!validOld) {
             response.status(401).json({
                 status: false,
-                message: `Old password is incorect.`
+                message: `Old password is incorrect.`
             })
             return
         }
@@ -398,14 +404,13 @@ export const updatePasswordUser = async (request: Request, response: Response) =
 
         const hashed = await bcrypt.hash(newPassword, 10)
 
-        const updateData = await prisma.user.update({
+        await prisma.user.update({
             where: { idUser: id },
             data: { password: hashed }
         })
 
         response.status(200).json({
             status: true,
-            data: updateData,
             message: `Successfully updated password.`
         })
         return

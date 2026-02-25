@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import Joi from "joi";
-import { status } from "../../generated/prisma";
+
 
 
 export const addDataSchema = Joi.object({
