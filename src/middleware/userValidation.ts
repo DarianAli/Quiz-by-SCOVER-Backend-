@@ -38,6 +38,42 @@ export const updateDataSchema = Joi.object({
     parent_phone_number: Joi.string().min(10).max(13).optional()
 })
 
+export const updatePasswordSchema = Joi.object({
+    password: Joi.string().min(6).max(128).required()
+})
+
+export const updatePasswordUserSchema = Joi.object({
+    oldPassword: Joi.string().min(6).max(128).required(),
+    newPassword: Joi.string().min(6).max(128).required(),
+    confirmPassword: Joi.string().min(6).max(128).required(),
+})
+
+export const updatePasswordDataUser = ( request: Request, response: Response, next: NextFunction ) => {
+    const { error } = updatePasswordUserSchema.validate(request.body, { abortEarly: false })
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            message: error.details.map(it => it.message).join()
+        })
+        return
+    }
+    return next()
+}
+
+export const updatePasswordData = ( request: Request, response: Response, next: NextFunction ) => {
+    const { error } = updatePasswordSchema.validate(request.body, { abortEarly: false })
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            message: error.details.map(it => it.message).join()
+        })
+        return
+    }
+    return next()
+}
+
 export const addData = (request: Request, response: Response, next: NextFunction) => {
     const { error } = addDataSchema.validate(request.body, { abortEarly: false })
 

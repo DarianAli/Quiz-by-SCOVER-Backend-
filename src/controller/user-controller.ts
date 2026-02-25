@@ -95,6 +95,7 @@ export const getAllUser = async (request: Request, response: Response) => {
                 userName: { contains: search?.toString() }
             },
             select: {
+                idUser: true,
                 uuid: true,
                 userName: true,
                 email: true,
@@ -266,6 +267,146 @@ export const updateUser = async (request: Request, response: Response) => {
             status: true,
             data: updateData,
             message: `Successfully update data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const updatePasswordAdmin = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.params;
+        const { password } = request.body;
+        const id = Number(idUser)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: {
+                idUser: id
+            }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const isSame = await bcrypt.compare(password, findUser.password)
+
+        if (isSame) {
+            response.status(400).json({
+                status: false,
+                message: `New password cannot be the same as old password.`
+            })
+            return
+        }
+
+        const hashed = await bcrypt.hash(password, 10)
+
+        const dataNew = await prisma.user.update({
+            where: { idUser: id },
+            data: { password: hashed }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: dataNew,
+            message: `Successfully update user password.`
+        })
+        return
+    } catch (error) {
+        console.error(error) 
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const updatePasswordUser = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.body;
+        const id = Number(idUser)
+        const { oldPassword, newPassword, confirmPassword } =  request.body;
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        if ( newPassword !== confirmPassword ) {
+            response.status(400).json({
+                status: false,
+                message: `Password confirmation does not match.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where:{ idUser: id }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const validOld = await bcrypt.compare(oldPassword, findUser.password)
+
+        if (!validOld) {
+            response.status(401).json({
+                status: false,
+                message: `Old password is incorect.`
+            })
+            return
+        }
+
+        const samePassword = await bcrypt.compare(newPassword, findUser.password)
+
+        if (samePassword) {
+            response.status(400).json({
+                status: false,
+                message: `New password cannot be same as old password.`
+            })
+            return
+        }
+
+        const hashed = await bcrypt.hash(newPassword, 10)
+
+        const updateData = await prisma.user.update({
+            where: { idUser: id },
+            data: { password: hashed }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: updateData,
+            message: `Successfully updated password.`
         })
         return
     } catch (error) {
