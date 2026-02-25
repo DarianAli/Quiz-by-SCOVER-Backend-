@@ -42,24 +42,18 @@ export const classUpdate = async (request: Request, response: Response) => {
     try {
         const { idClass } = request.params;
         const { class_name, class_program } = request.body;
+        const id = Number(idClass)
 
-        if (!idClass) {
+        if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
-                message: `idClass is required.`
+                message: `ID must be a number.`
             })
             return
         }
 
-        if (Number.isNaN(idClass)) {
-            response.status(400).json({
-                status: false,
-                message: `ID muss be a number.`
-            })
-        }
-
         const findClass = await prisma.classes.findFirst({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
 
         if (!findClass) {
@@ -137,7 +131,7 @@ export const getById = async (request: Request, response: Response) => {
         if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
-                message: `ID muss be a number.`
+                message: `ID must be a number.`
             })
             return
         }
@@ -173,6 +167,7 @@ export const getById = async (request: Request, response: Response) => {
 export const deleteClass = async (request: Request, response: Response) => {
     try {
         const { idClass } = request.params;
+        const id = Number(idClass)
 
         if (!idClass) {
             response.status(400).json({
@@ -182,15 +177,17 @@ export const deleteClass = async (request: Request, response: Response) => {
             return
         }
 
-        if (Number.isNaN(idClass)) {
+        if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
                 message: `ID must be a number.`
             })
+            return
         }
 
+
         const findClass = await prisma.classes.findUnique({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
         
         if (!findClass) {
