@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid"
 import { PrismaClient, status } from "../../generated/prisma/client"; 
 import bcrypt from "bcrypt"
+import { error } from "node:console";
 
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
@@ -425,6 +426,60 @@ export const updatePasswordUser = async (request: Request, response: Response) =
     }
 }
 
+export const deleteUser = async( request: Request, response: Response ) => {
+    try {
+        const { idUser } = request.params;
+        const id = Number(idUser)
 
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: { idUser: id }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const deletedData = await prisma.user.delete({
+            where: {
+                idUser: id
+            },
+            select: {
+                idUser: true,
+                uuid: true,
+                userName: true,
+                email: true,
+                full_name: true,
+                role: true
+            }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: deletedData,
+            message: `Successfully delete data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
 
 
