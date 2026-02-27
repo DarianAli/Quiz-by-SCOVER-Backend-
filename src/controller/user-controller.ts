@@ -2,8 +2,7 @@ import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid"
 import { PrismaClient, status } from "../../generated/prisma/client"; 
 import bcrypt from "bcrypt"
-import { error } from "node:console";
-
+import Jwt from "jsonwebtoken"
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
 
@@ -469,6 +468,65 @@ export const deleteUser = async( request: Request, response: Response ) => {
             status: true,
             data: deletedData,
             message: `Successfully delete data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const auth = async ( request: Request, response: Response ) => {
+    try {
+        const { email, password } = request.body;
+
+        const user = await prisma.user.findFirst({
+            where: { email: email }
+        })
+
+        if (!user) {
+            response.status(404).json({
+                status: false,
+                message: `User with that email not found.`
+            })
+            return
+        }
+
+        const isMatch = await bcrypt.compare( password, user.password )
+
+        if(!isMatch) {
+            response.status(401).json({
+                status: false,
+                logged: false,
+                message: `Invalid credentials.`
+            })
+            return
+        }
+
+        let data = {
+            idUser: user.idUser,
+            email: user.email,
+            role: user.role,
+            userName: user.userName
+        }
+
+        let TOKEN = Jwt.sign(
+            { idUser: user.idUser, email: user.email, role: user.role },
+            process.env.SECRET || "token",
+            { expiresIn: "1d" }
+        )
+
+        response.status(200).json({
+            status: true,
+            logged: true,
+            data: data,
+            message: `Successfully logged in.`,
+            TOKEN
         })
         return
     } catch (error) {

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import Joi from "joi";
+import { status } from "../../generated/prisma";
 
 
 
@@ -47,6 +48,25 @@ export const updatePasswordUserSchema = Joi.object({
     newPassword: Joi.string().min(6).max(128).required(),
     confirmPassword: Joi.string().min(6).max(128).required(),
 })
+
+export const authSchema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().required(),
+    user: Joi.optional()
+})
+
+export const verifyLogin = ( request: Request, response: Response, next: NextFunction ) => {
+    const { error } = authSchema.validate(request.body, { abortEarly: false })
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            message: error.details.map(it => it.message).join()
+        })
+        return
+    }
+    return next()
+}
 
 export const updatePasswordDataUser = ( request: Request, response: Response, next: NextFunction ) => {
     const { error } = updatePasswordUserSchema.validate(request.body, { abortEarly: false })
