@@ -5,6 +5,7 @@ import Jwt from "jsonwebtoken";
 interface JwPayLoad {
     idUser: number,
     userName: string,
+    password: string,
     role: string
 }
 
