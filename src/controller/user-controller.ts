@@ -2,9 +2,7 @@ import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid"
 import { PrismaClient, status } from "../../generated/prisma/client"; 
 import bcrypt from "bcrypt"
-import rateLimit from "express-rate-limit";
-import { boolean } from "joi";
-
+import Jwt from "jsonwebtoken"
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
 
@@ -95,6 +93,7 @@ export const getAllUser = async (request: Request, response: Response) => {
                 userName: { contains: search?.toString() }
             },
             select: {
+                idUser: true,
                 uuid: true,
                 userName: true,
                 email: true,
@@ -139,7 +138,16 @@ export const getById = async (request: Request, response: Response) => {
 
         const findUser = await prisma.user.findUnique({
             where: { idUser: id },
-            include: {
+            select: {
+                idUser: true,
+                uuid: true,
+                userName: true,
+                email: true,
+                full_name: true,
+                role: true,
+                phone_number: true,
+                parent_full_name: true,
+                parent_phone_number: true,
                 class: true
             }
         })
@@ -227,13 +235,13 @@ export const updateUser = async (request: Request, response: Response) => {
 
         if (findDuplicates) {
             if (email && findDuplicates.email === email) {
-                return response.status(409).json({ message: `Email already used.` })
+                return response.status(409).json({ status: false, message: `Email already used.` })
             }
             if (userName && findDuplicates.userName === userName) {
-                return response.status(409).json({ message: "Username already used" });
+                return response.status(409).json({ status: false, message: "Username already used" });
             }
             if (phone_number && findDuplicates.phone_number === phone_number) {
-                return response.status(409).json({ message: "Phone number already used" });
+                return response.status(409).json({ status: false, message: "Phone number already used" });
             }
         }
 
@@ -279,6 +287,257 @@ export const updateUser = async (request: Request, response: Response) => {
     }
 }
 
+export const updatePasswordAdmin = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.params;
+        const { password } = request.body;
+        const id = Number(idUser)
 
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: {
+                idUser: id
+            }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const isSame = await bcrypt.compare(password, findUser.password)
+
+        if (isSame) {
+            response.status(400).json({
+                status: false,
+                message: `New password cannot be the same as old password.`
+            })
+            return
+        }
+
+        const hashed = await bcrypt.hash(password, 10)
+
+        await prisma.user.update({
+            where: { idUser: id },
+            data: { password: hashed }
+        })
+
+        response.status(200).json({
+            status: true,
+            message: `Successfully update user password.`
+        })
+        return
+    } catch (error) {
+        console.error(error) 
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const updatePasswordUser = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.params;
+        const id = Number(idUser)
+        const { oldPassword, newPassword, confirmPassword } =  request.body;
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        if ( newPassword !== confirmPassword ) {
+            response.status(400).json({
+                status: false,
+                message: `Password confirmation does not match.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where:{ idUser: id }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const validOld = await bcrypt.compare(oldPassword, findUser.password)
+
+        if (!validOld) {
+            response.status(401).json({
+                status: false,
+                message: `Old password is incorrect.`
+            })
+            return
+        }
+
+        const samePassword = await bcrypt.compare(newPassword, findUser.password)
+
+        if (samePassword) {
+            response.status(400).json({
+                status: false,
+                message: `New password cannot be same as old password.`
+            })
+            return
+        }
+
+        const hashed = await bcrypt.hash(newPassword, 10)
+
+        await prisma.user.update({
+            where: { idUser: id },
+            data: { password: hashed }
+        })
+
+        response.status(200).json({
+            status: true,
+            message: `Successfully updated password.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const deleteUser = async( request: Request, response: Response ) => {
+    try {
+        const { idUser } = request.params;
+        const id = Number(idUser)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: { idUser: id }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const deletedData = await prisma.user.delete({
+            where: {
+                idUser: id
+            },
+            select: {
+                idUser: true,
+                uuid: true,
+                userName: true,
+                email: true,
+                full_name: true,
+                role: true
+            }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: deletedData,
+            message: `Successfully delete data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const auth = async ( request: Request, response: Response ) => {
+    try {
+        const { email, password } = request.body;
+
+        const user = await prisma.user.findFirst({
+            where: { email: email }
+        })
+
+        if (!user) {
+            response.status(404).json({
+                status: false,
+                message: `User with that email not found.`
+            })
+            return
+        }
+
+        const isMatch = await bcrypt.compare( password, user.password )
+
+        if(!isMatch) {
+            response.status(401).json({
+                status: false,
+                logged: false,
+                message: `Invalid credentials.`
+            })
+            return
+        }
+
+        let data = {
+            idUser: user.idUser,
+            email: user.email,
+            role: user.role,
+            userName: user.userName
+        }
+
+        let TOKEN = Jwt.sign(
+            { idUser: user.idUser, email: user.email, role: user.role },
+            process.env.SECRET || "token",
+            { expiresIn: "1d" }
+        )
+
+        response.status(200).json({
+            status: true,
+            logged: true,
+            data: data,
+            message: `Successfully logged in.`,
+            TOKEN
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
 
 

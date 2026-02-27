@@ -45,6 +45,17 @@ export const updateLimiter = rateLimit({
     }
 })
 
+export const passwordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many request"
+        })  
+    }
+})
+
 export const deleteLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 3,
