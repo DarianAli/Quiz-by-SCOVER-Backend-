@@ -1,6 +1,6 @@
 import { Response, Request } from "express"
 import { PrismaClient } from "@prisma/client"
-import { request } from "http";
+import { v4 as uuidv4 } from "uuid";
 
 const prisma = new PrismaClient ({ errorFormat: "pretty"})
 
@@ -73,11 +73,74 @@ export const getQuizById = async (request: Request, response: Response) => {
 }
 
 export const createQuiz = async (request: Request, response: Response) => {
+    try {
+      const user = ( request as any ).user
+      const { quiz_title, quiz_date, duration, status, difficulty } = request.body;
+      const uuid = uuidv4();
+  
+      if (!duration || duration <= 0) {
+        return response.status(400).json({
+          success: false,
+          message: "duration must be greater than 0"
+        })
+      }
     
+        const newQuiz = await prisma.quiz.create({
+          data: {
+            uuid,
+            quiz_title,
+            quiz_date: new Date(quiz_date),
+            duration: Number(duration),
+            status,
+            difficulty,
+            created_by: user.idUser,
+            
+          }
+        });
+    
+        return response.status(200).json({
+          status: true,
+          data: newQuiz
+        })
+    
+      } catch (error) {
+        console.error(error);
+  
+        return response.status(500).json({
+          status: false,
+          message: `Failed to create quiz${error}`,
+        })
+      }
 }
 
 export const updateQuiz = async (request: Request, response: Response) => {
+    try {
+        const { idQuiz } = request.params;
+        const { quiz_title, quiz_date, duration, status, difficulty } = request.body;
     
+        const updatedQuiz = await prisma.quiz.update({
+          where: { idQuiz: Number(idQuiz) },
+          data: {
+            quiz_title,
+            quiz_date: new Date(quiz_date),
+            duration: Number(duration),
+            status,
+            difficulty,
+          }
+        });
+    
+        return response.status(200).json({
+          status: true,
+          data: updatedQuiz,
+          message: "Quiz updated successfully"
+        })
+    
+      } catch (error) {
+        return response.status(500).json({
+          status: false,
+          message: `Failed to update quiz. ${error}`,
+        })
+      }
 }
 
 
