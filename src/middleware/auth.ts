@@ -5,7 +5,6 @@ import Jwt from "jsonwebtoken";
 interface JwPayLoad {
     idUser: number,
     userName: string,
-    password: string,
     role: string
 }
 
@@ -41,9 +40,9 @@ export const verifyRole = ( allowedRole: string[] ) => {
         const user = request.user;
 
         if (!user) {
-            response.status(404).json({
+            response.status(401).json({
                 status: false,
-                message: `User not found.`
+                message: `Authentication required.`
             })
             return
         }
