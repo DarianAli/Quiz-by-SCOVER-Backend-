@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -66,6 +65,7 @@ model user {
 
   scores          scores[]
   answers         answers[]
+  attempt         attempt[]
 }
 
 model classes {
@@ -105,22 +105,38 @@ model quiz {
   idQuiz          Int           @id @default(autoincrement())
   uuid            String        @unique @default("")
   quiz_title      String        @default("")
-  quiz_date       DateTime      @default(now())
-  start_time      DateTime      
-  finished_time   DateTime      
-  duration        Int           @default(0)
+  quiz_date       DateTime      @default(now())     
+  duration        Int           @default(0)  //minutes 
   status          status        @default(INCOMPLETED)
   difficulty      difficulty    @default(EASY)
   created_by      Int           @default(0)
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt
 
-  subject         subject       @relation(fields: [subjectId], references: [idSubject])
-  subjectId       Int
+  subject         subject?       @relation(fields: [subjectId], references: [idSubject])
+  subjectId       Int?
 
   scores          scores[]
   answers         answers[]
   questions       questions[]
+  attempt         attempt[]
+}
+
+model attempt {
+  idAttempt       Int           @id @default(autoincrement())
+  userId          Int
+  quizId          Int
+
+  start_time      DateTime      @default(now())
+  finished_time   DateTime?
+  isFinished      Boolean       @default(false)     
+
+  user            user          @relation(fields: [userId], references: [idUser])
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz]) 
+
+  created_at      DateTime      @default(now())
+
+   @@unique([userId, quizId]) // prevent double start
 }
 
 model scores {
