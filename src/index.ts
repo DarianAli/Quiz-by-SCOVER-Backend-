@@ -1,9 +1,13 @@
+import dotenv from "dotenv"
+dotenv.config()
+
 import express from "express"
 import cors from "cors"
 import userRoute from "./Router/userRoute"
 import classRoute from "./Router/classRouter"
 import adminRoute from "./Router/adminRouter"
 import { globalLimiter } from "./middleware/rateLimiter"
+
 
 const PORT: number = 9000
 const app = express()

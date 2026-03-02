@@ -47,9 +47,9 @@ export const verifyRole = ( allowedRole: string[] ) => {
             return
         }
 
-        if (!user.role || !allowedRole.includes(user?.role ?? "STUDENT")) {
+        if (!user.role || !allowedRole.includes(user.role)) {
             response.status(403).json({
-                message: `Role that allowed is between ${ allowedRole.join("/") }`
+                message: `Role that allowed is ${ allowedRole.join("/") }`
             })
             return
         }
