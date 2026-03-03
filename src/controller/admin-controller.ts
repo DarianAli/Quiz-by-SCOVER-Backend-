@@ -111,3 +111,102 @@ export const getAdminProfile = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const updateAdmin = async (request: Request, response: Response) => {
+    try {
+        const { idAdmin } = request.params;
+        const id = Number(idAdmin)
+        const { username, email, phone_number } = request.body;
+
+        if(Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findAdmin = await prisma.admin.findUnique({
+            where: {
+                idAdmin: id
+            }
+        })
+
+        if (!findAdmin) {
+            response.status(404).json({
+                status: false,
+                message: `Admin not found.`
+            })
+            return
+        }
+
+        const findDUplicates = await prisma.admin.findFirst({
+            where: {
+                OR: [
+                    {username},
+                    {email},
+                    {phone_number}
+                ],
+                NOT: {
+                    idAdmin: id
+                }
+            }
+        })
+
+        if (findDUplicates) {
+            if (email && findDUplicates.email === email) {
+                return response.status(409).json({
+                    status: false,
+                    message: `Email already used.`
+                })
+            }
+
+            if (username && findDUplicates.username === username) {
+                return response.status(409).json({
+                    status: false,
+                    message: `Username already used.`
+                })
+            }
+
+            if (phone_number && findDUplicates.phone_number === phone_number) {
+                return response.status(409).json({
+                    status: false,
+                    message: `Phone number already used.`
+                })
+            }
+        }
+
+
+        const updateData = await prisma.admin.update({
+            data: {
+                username: username ?? findAdmin.username,
+                email: email ?? findAdmin.email,
+                phone_number: phone_number ?? findAdmin.phone_number,
+            },
+            select: {
+                uuid: true,
+                username: true,
+                email: true,
+                role: true
+            },
+            where: { 
+                idAdmin: id 
+            }
+        })
+        
+        response.status(200).json({
+            status: true,
+            data: updateData,
+            message: `Successfully updated the data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,  
+            message: `Internal server error.`
+        })
+        return
+    }
+}
