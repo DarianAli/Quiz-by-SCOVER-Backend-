@@ -63,3 +63,51 @@ export const createAdmin = async (request: Request, response: Response) => {
         })
     }
 }
+
+export const getAdminProfile = async (request: Request, response: Response) => {
+    try {
+        const { idAdmin } = request.params;
+        const id = Number(idAdmin)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findAdmin = await prisma.admin.findUnique({
+            where: { idAdmin: id },
+            select: {
+                username: true,
+                email: true,
+                role: true,
+                phone_number: true,
+            }
+        })
+
+        if (!findAdmin) {
+            response.status(404).json({
+                status: false,
+                message: `Admin not found.`
+            })
+            return
+        }
+
+        response.status(200).json({
+            status: true,
+            data: findAdmin,
+            message: `Admin profile retrieved successfully.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}

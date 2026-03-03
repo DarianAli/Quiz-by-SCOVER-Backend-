@@ -4,6 +4,9 @@ import Jwt from "jsonwebtoken";
 
 interface JwPayLoad {
     idUser: number,
+    idAdmin: number,
+    email: string,
+    username: string,
     userName: string,
     role: string
 }
@@ -49,6 +52,7 @@ export const verifyRole = ( allowedRole: string[] ) => {
 
         if (!user.role || !allowedRole.includes(user.role)) {
             response.status(403).json({
+                status: false,
                 message: `Role that allowed is ${ allowedRole.join("/") }`
             })
             return

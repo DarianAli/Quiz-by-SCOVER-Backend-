@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import Joi from "joi";
-import { status } from "../../generated/prisma";
 
 
 
@@ -10,7 +9,7 @@ export const addDataSchema = Joi.object({
     password: Joi.string().min(6).max(128).required(),
     full_name: Joi.string().required(),
     role: Joi.string().valid("TENTOR", "STUDENT").required(),
-    phone_number: Joi.string().min(10).max(13).required(),
+        phone_number: Joi.string().min(10).max(13).required(),
     classId: Joi.number().when('role', {
     is: 'STUDENT',
     then: Joi.required(),

@@ -2,15 +2,15 @@ import { Request, Response, NextFunction } from "express";
 
 
 export const onlyAdminCanChangeRole = (
-  req: Request,
-  res: Response,
+  request: Request,
+  response: Response,
   next: NextFunction
 ) => {
-  const requester = req.user;
+  const requester = request.user;
 
-  if (req.body.role !== undefined) {
+  if (request.body.role !== undefined) {
     if (requester?.role !== "ADMIN") {
-      return res.status(403).json({
+      return response.status(403).json({
         status: false,
         message: "Only admin can change role"
       });
