@@ -258,14 +258,14 @@ export const updateUser = async (request: Request, response: Response) => {
 
         const updateData = await prisma.user.update({
             data: {
-                userName: userName || findUser.userName,
-                email: email || findUser.email,
-                full_name: full_name || findUser.full_name,
-                role: role || findUser.role,
-                phone_number: phone_number || findUser.phone_number,
-                parent_full_name: parent_full_name || findUser.parent_full_name,
-                parent_phone_number: parent_phone_number || findUser.parent_phone_number,
-                classId: classId || findUser.classId
+                userName: userName ?? findUser.userName,
+                email: email ?? findUser.email,
+                full_name: full_name ?? findUser.full_name,
+                role: role ?? findUser.role,
+                phone_number: phone_number ?? findUser.phone_number,
+                parent_full_name: parent_full_name ?? findUser.parent_full_name,
+                parent_phone_number: parent_phone_number ?? findUser.parent_phone_number,
+                classId: classId ?? findUser.classId
             },
             select: {
                 uuid: true,
@@ -513,7 +513,7 @@ export const auth = async (request: Request, response: Response) => {
             if (!match) return invalid();
 
             const data = {
-                idUser: admin.idAdmin,
+                idAdmin: admin.idAdmin,
                 email: admin.email,
                 role: "ADMIN",
                 userName: admin.username
@@ -528,7 +528,7 @@ export const auth = async (request: Request, response: Response) => {
             }
 
             const TOKEN = Jwt.sign(
-                { idUser: admin.idAdmin, email: admin.email, role: "ADMIN" },
+                { idAdmin: admin.idAdmin, email: admin.email, role: "ADMIN" },
                 process.env.SECRET,
                 { expiresIn: "1d" }
             );
@@ -557,9 +557,17 @@ export const auth = async (request: Request, response: Response) => {
                 userName: user.userName
             };
 
+            if (!process.env.SECRET){
+                response.status(500).json({
+                    status: false,
+                    message: `Server configuration error.`
+                })
+                return
+            }
+
             const TOKEN = Jwt.sign(
                 { idUser: user.idUser, email: user.email, role: user.role },
-                process.env.SECRET!,
+                process.env.SECRET,
                 { expiresIn: "1d" }
             );
 
