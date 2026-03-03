@@ -14,7 +14,7 @@ app.post("/register", registerLimiter, [verifyToken,  verifyRole(["ADMIN"]), add
 app.post("/login", registerLimiter, [verifyLogin], auth)
 app.get("/getAll", [verifyToken, verifyRole(["ADMIN"])], getAllUser)
 app.get("/get/:idUser", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), verifyOwnershipOrAdmin], getById)
-app.put("/update/:idUser", updateLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), onlyAdminCanChangeRole, updateData, phoneValidation(["phone_number", "parent_phone_number"])], updateUser)
+app.put("/update/:idUser", updateLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), verifyOwnershipOrAdmin, onlyAdminCanChangeRole, updateData, phoneValidation(["phone_number", "parent_phone_number"])], updateUser)
 app.put("/:idUser/admin/password", passwordLimiter, [verifyToken, verifyRole(["ADMIN"]), updatePasswordData], updatePasswordAdmin)
 app.put("/password/:idUser", passwordLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), verifyOwnershipOrAdmin, updatePasswordDataUser], updatePasswordUser)
 app.delete("/delete/:idUser",deleteLimiter, [verifyToken, verifyRole(["ADMIN"])], deleteUser)
