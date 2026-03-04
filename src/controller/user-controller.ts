@@ -580,6 +580,14 @@ export const auth = async (request: Request, response: Response) => {
             });
         }
 
+        if (!user && !admin) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
         return invalid();
 
     } catch (error) {
