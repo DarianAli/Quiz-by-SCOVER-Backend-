@@ -109,7 +109,9 @@ model quiz {
   duration        Int           @default(0)  //minutes 
   status          status        @default(INCOMPLETED)
   difficulty      difficulty    @default(EASY)
-  created_by      Int           @default(0)
+
+  created_by      Int           ?
+  creator_role    role          ?
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt
 

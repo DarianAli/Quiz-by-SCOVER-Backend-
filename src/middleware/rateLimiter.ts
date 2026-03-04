@@ -19,7 +19,7 @@ export const registerLimiter = rateLimit({
     handler: (request: Request, response: Response) =>{
         response.status(429).json({
             status: false,
-            message: "Too many request"
+            message: "Too many requests"
         })
     }
 })
@@ -30,7 +30,7 @@ export const postLimiter = rateLimit({
     handler: (request: Request, response: Response) =>{
         response.status(429).json({
             status: false,
-            message: "Too many request"
+            message: "Too many requests"
         })
     }
 })
@@ -41,7 +41,7 @@ export const updateLimiter = rateLimit({
     handler: (request: Request, response: Response) =>{
         response.status(429).json({
             status: false,
-            message: "Too many request"
+            message: "Too many requests"
         })  
     }
 })
@@ -52,7 +52,7 @@ export const passwordLimiter = rateLimit({
     handler: (request: Request, response: Response) =>{
         response.status(429).json({
             status: false,
-            message: "Too many request"
+            message: "Too many requests"
         })  
     }
 })
@@ -63,7 +63,7 @@ export const deleteLimiter = rateLimit({
     handler: (request: Request, response: Response) =>{
         response.status(429).json({
             status: false,
-            message: "Too many request"
+            message: "Too many requests"
         })
     }
 })

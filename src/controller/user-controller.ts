@@ -4,6 +4,7 @@ import { PrismaClient, status } from "../../generated/prisma/client";
 import bcrypt from "bcrypt"
 import Jwt from "jsonwebtoken"
 
+
 const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const createUser = async (request: Request, response: Response) => {
@@ -190,6 +191,16 @@ export const updateUser = async (request: Request, response: Response) => {
             })
             return
         }
+
+        const requester = request.user;
+
+        if (requester?.role !== "ADMIN" && requester?.idUser !== id) {
+            return response.status(403).json({
+                status: false,
+                message: "Forbidden: You can only edit your own account."
+            });
+        }
+
         if (classId !== undefined) {
             const findClass = await prisma.classes.findUnique({
                 where: {
@@ -247,14 +258,14 @@ export const updateUser = async (request: Request, response: Response) => {
 
         const updateData = await prisma.user.update({
             data: {
-                userName: userName || findUser.userName,
-                email: email || findUser.email,
-                full_name: full_name || findUser.full_name,
-                role: role || findUser.role,
-                phone_number: phone_number || findUser.phone_number,
-                parent_full_name: parent_full_name || findUser.parent_full_name,
-                parent_phone_number: parent_phone_number || findUser.parent_phone_number,
-                classId: classId || findUser.classId
+                userName: userName ?? findUser.userName,
+                email: email ?? findUser.email,
+                full_name: full_name ?? findUser.full_name,
+                role: role ?? findUser.role,
+                phone_number: phone_number ?? findUser.phone_number,
+                parent_full_name: parent_full_name ?? findUser.parent_full_name,
+                parent_phone_number: parent_phone_number ?? findUser.parent_phone_number,
+                classId: classId ?? findUser.classId
             },
             select: {
                 uuid: true,
@@ -481,63 +492,102 @@ export const deleteUser = async( request: Request, response: Response ) => {
     }
 }
 
-export const auth = async ( request: Request, response: Response ) => {
+export const auth = async (request: Request, response: Response) => {
     try {
         const { email, password } = request.body;
 
-        const user = await prisma.user.findFirst({
-            where: { email: email }
-        })
-
-        if (!user) {
-            response.status(404).json({
-                status: false,
-                message: `User with that email not found.`
-            })
-            return
-        }
-
-        const isMatch = await bcrypt.compare( password, user.password )
-
-        if(!isMatch) {
-            response.status(401).json({
+        const invalid = () => {
+            return response.status(401).json({
                 status: false,
                 logged: false,
-                message: `Invalid credentials.`
-            })
-            return
+                message: "Invalid credentials."
+            });
+        };
+
+        const admin = await prisma.admin.findFirst({
+            where: { email }
+        });
+
+        if (admin) {
+            const match = await bcrypt.compare(password, admin.password);
+            if (!match) return invalid();
+
+            const data = {
+                idAdmin: admin.idAdmin,
+                email: admin.email,
+                role: "ADMIN",
+                userName: admin.username
+            };
+
+            if (!process.env.SECRET) {
+                response.status(500).json({
+                    status: false,
+                    message: `Server configuration error.`
+                })
+                return
+            }
+
+            const TOKEN = Jwt.sign(
+                { idAdmin: admin.idAdmin, email: admin.email, role: "ADMIN" },
+                process.env.SECRET,
+                { expiresIn: "1d" }
+            );
+
+            return response.status(200).json({
+                status: true,
+                logged: true,
+                data,
+                message: "Successfully logged in.",
+                TOKEN
+            });
         }
 
-        let data = {
-            idUser: user.idUser,
-            email: user.email,
-            role: user.role,
-            userName: user.userName
+        const user = await prisma.user.findFirst({
+            where: { email }
+        });
+
+        if (user) {
+            const match = await bcrypt.compare(password, user.password);
+            if (!match) return invalid();
+
+            const data = {
+                idUser: user.idUser,
+                email: user.email,
+                role: user.role,
+                userName: user.userName
+            };
+
+            if (!process.env.SECRET){
+                response.status(500).json({
+                    status: false,
+                    message: `Server configuration error.`
+                })
+                return
+            }
+
+            const TOKEN = Jwt.sign(
+                { idUser: user.idUser, email: user.email, role: user.role },
+                process.env.SECRET,
+                { expiresIn: "1d" }
+            );
+
+            return response.status(200).json({
+                status: true,
+                logged: true,
+                data,
+                message: "Successfully logged in.",
+                TOKEN
+            });
         }
 
-        let TOKEN = Jwt.sign(
-            { idUser: user.idUser, email: user.email, role: user.role },
-            process.env.SECRET || "token",
-            { expiresIn: "1d" }
-        )
+        return invalid();
 
-        response.status(200).json({
-            status: true,
-            logged: true,
-            data: data,
-            message: `Successfully logged in.`,
-            TOKEN
-        })
-        return
     } catch (error) {
-        console.error(error)
+        console.error(error);
 
-        response.status(500).json({
+        return response.status(500).json({
             status: false,
-            message: `Internal server error.`
-        })
-        return
+            message: "Internal server error."
+        });
     }
-}
-
-
+};

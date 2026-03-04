@@ -4,8 +4,10 @@ import Jwt from "jsonwebtoken";
 
 interface JwPayLoad {
     idUser: number,
+    idAdmin: number,
+    email: string,
+    username: string,
     userName: string,
-    password: string,
     role: string
 }
 
@@ -24,7 +26,7 @@ export const verifyToken = ( request: Request, response: Response, next: NextFun
         const secretKey = SECRET || "token"
         const decoded = Jwt.verify(token, secretKey)
         request.user = decoded as JwPayLoad
-        (request as any).user = decoded
+        request.admin = decoded as JwPayLoad
         next()
     } catch (error) {
         console.error(error)
@@ -42,16 +44,17 @@ export const verifyRole = ( allowedRole: string[] ) => {
         const user = request.user;
 
         if (!user) {
-            response.status(404).json({
+            response.status(401).json({
                 status: false,
-                message: `User not found.`
+                message: `Authentication required.`
             })
             return
         }
 
-        if (!user.role || !allowedRole.includes(user?.role ?? "STUDENT")) {
+        if (!user.role || !allowedRole.includes(user.role)) {
             response.status(403).json({
-                message: `Role that allowed is between ${ allowedRole.join("/") }`
+                status: false,
+                message: `Role that allowed is ${ allowedRole.join("/") }`
             })
             return
         }

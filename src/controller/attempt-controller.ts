@@ -5,8 +5,8 @@ const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const startAttempt = async (request: Request, response: Response) => {
     try {
-        const user = ( request as any ).user
-        const { idQuiz } = request.body;
+        const user = request.user
+        const { idQuiz } = request.params;
         const id = Number(idQuiz)
 
         if (Number.isNaN(id)) {
@@ -16,6 +16,17 @@ export const startAttempt = async (request: Request, response: Response) => {
             })
             return
         }
+
+        if (!user) {
+                response.status(401).json({
+                success: false,
+                message: "unauthorized"
+            })
+            return
+        }
+
+        console.log(user)
+
     
         const quiz = await prisma.quiz.findUnique ({
             where: { idQuiz: Number(idQuiz) }
@@ -52,6 +63,7 @@ export const startAttempt = async (request: Request, response: Response) => {
                 quizId: Number(idQuiz)
             }
         })
+
     
         response.json({
             attemptId: attempt.idAttempt,
@@ -71,14 +83,22 @@ export const startAttempt = async (request: Request, response: Response) => {
 export const submitAttempt = async (request: Request, response: Response) => {
     try {
 
-        const user = ( request as any ).user
-        const { idAttempt } = request.body;
+        const user = request.user
+        const { idAttempt } = request.params;
         const id = Number(idAttempt)
 
         if (Number.isNaN(id)) {
             response.status(400).json({
             success: false,
             message: "id must be a number"
+            })
+            return
+        }
+
+        if (!user) {
+                response.status(401).json({
+                success: false,
+                message: "unauthorized"
             })
             return
         }

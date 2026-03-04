@@ -1,9 +1,14 @@
+import dotenv from "dotenv"
+dotenv.config()
+
 import express from "express"
 import cors from "cors"
 import userRoute from "./Router/userRoute"
 import classRoute from "./Router/classRouter"
-import quizRouter from "./Router/quizRouter"
+import adminRoute from "./Router/adminRouter"
+import quizRoute from "./Router/quizRouter"
 import { globalLimiter } from "./middleware/rateLimiter"
+
 
 const PORT: number = 9000
 const app = express()
@@ -13,7 +18,8 @@ app.use(globalLimiter)
 
 app.use("/user", userRoute)
 app.use("/class", classRoute)
-app.use("/quiz", quizRouter)
+app.use("/admin", adminRoute)
+app.use("/quiz", quizRoute)
 
 app.listen(PORT, () => {
     console.log(`Server running at port ${PORT}`)

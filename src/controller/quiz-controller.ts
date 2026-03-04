@@ -95,7 +95,28 @@ export const getQuizById = async (request: Request, response: Response) => {
 
 export const createQuiz = async (request: Request, response: Response) => {
     try {
-      const user = ( request as any ).user
+      const user = request.user;
+      const admin = request.admin
+
+      let createdById: number | null = null
+      let creatorRole: any = null
+
+      if (admin) {
+        createdById = admin.idAdmin
+        creatorRole = admin.role
+      } else if (user) {
+        createdById = user.idUser
+        creatorRole = user.role
+      } else {
+        response.status(401).json({
+          success: false,
+          message: "Unauthorized"
+        })
+        return
+      }
+
+      console.log("CREATED BY ID:", createdById)
+
       const { quiz_title, quiz_date, duration, status, difficulty } = request.body;
       const uuid = uuidv4();
   
@@ -115,11 +136,16 @@ export const createQuiz = async (request: Request, response: Response) => {
             duration: Number(duration),
             status,
             difficulty,
-            created_by: user.idUser,
-            
+            created_by: createdById,
+            creator_role: creatorRole 
+          },
+          include: {
+            subject: true,
+            questions: true,
+            scores: true,
           }
         });
-    
+          console.log("USER DATA: ",user)
           response.status(201).json({
           success: true,
           data: newQuiz
