@@ -35,6 +35,7 @@ export const verifyToken = ( request: Request, response: Response, next: NextFun
         const secretKey = SECRET || "token"
         const decoded = Jwt.verify(token, secretKey)
         request.user = decoded as JwPayLoad
+        request.admin = decoded as JwPayLoad
         next()
     } catch (error) {
         console.error(error)

@@ -6,6 +6,7 @@ import cors from "cors"
 import userRoute from "./Router/userRoute"
 import classRoute from "./Router/classRouter"
 import adminRoute from "./Router/adminRouter"
+import quizRoute from "./Router/quizRouter"
 import { globalLimiter } from "./middleware/rateLimiter"
 
 
@@ -18,6 +19,7 @@ app.use(globalLimiter)
 app.use("/user", userRoute)
 app.use("/class", classRoute)
 app.use("/admin", adminRoute)
+app.use("/quiz", quizRoute)
 
 app.listen(PORT, () => {
     console.log(`Server running at port ${PORT}`)
