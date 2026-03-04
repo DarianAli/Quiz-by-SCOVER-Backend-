@@ -9,7 +9,7 @@ import { onlyAdminCanChangeRole } from "../middleware/onlyAdminUpdate";
 const app = express()
 app.use(express.json())
 
-app.post("/register", registerLimiter, [verifyToken,  verifyRole(["ADMIN"]), addData, phoneValidation(["phone_number", "parent_phone_number"])], createUser)
+app.post("/register", registerLimiter, [ addData, phoneValidation(["phone_number", "parent_phone_number"])], createUser)
 app.post("/login", [verifyLogin], auth)
 app.get("/getAll", [verifyToken, verifyRole(["ADMIN"])], getAllUser)
 app.get("/get/:idUser", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getById)
