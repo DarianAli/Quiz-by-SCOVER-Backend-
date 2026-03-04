@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { PrismaClient } from "../../generated/prisma";
 import { v4 as uuidv4 } from "uuid"
 import bcrypt from "bcrypt"
+import { date } from "joi";
 
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
@@ -205,6 +206,68 @@ export const updateAdmin = async (request: Request, response: Response) => {
 
         response.status(500).json({
             status: false,  
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const updatePassword = async (request: Request, response : Response) => {
+    try {
+        const { idAdmin } = request.params;
+        const { password } = request.body;
+        const id = Number(idAdmin)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findAdmin = await prisma.admin.findUnique({
+            where: { idAdmin: id }
+        })
+
+        if (!findAdmin) {
+            response.status(404).json({
+                status: false,
+                message: `Account not found.`
+            })
+            return
+        }
+
+        const isSame = await bcrypt.compare(password, findAdmin.password) 
+        
+        if (isSame) {
+            response.status(400).json({
+                status: false,
+                message: `Password cannot be the same as old password.`
+            })
+            return
+        }
+
+        const hashed = await bcrypt.hash(password, 10)
+
+        await prisma.admin.update({
+            data: {
+                password: hashed,
+            },
+            where: { idAdmin: id }
+        })
+
+        response.status(200).json({
+            status: true,
+            message: `Successfully updated the password :)`
+        })
+        return
+
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
             message: `Internal server error.`
         })
         return

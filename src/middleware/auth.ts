@@ -22,6 +22,15 @@ export const verifyToken = ( request: Request, response: Response, next: NextFun
         return
     }
 
+    if (!SECRET) {
+        console.error("JWT SECRET is not configured")
+        response.status(500).json({
+            status: false,
+            message: `Server configuration error.`
+        })
+        return
+    }
+
     try {
         const secretKey = SECRET || "token"
         const decoded = Jwt.verify(token, secretKey)
@@ -32,7 +41,7 @@ export const verifyToken = ( request: Request, response: Response, next: NextFun
 
         response.status(401).json({
             status: false,
-            message: `Internal error for token.`
+            message: `Invalid or expired token.`
         })
         return
     }
