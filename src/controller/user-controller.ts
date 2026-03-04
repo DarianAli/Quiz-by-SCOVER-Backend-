@@ -35,10 +35,27 @@ export const createUser = async (request: Request, response: Response) => {
             }
         })
 
+        const existingAdmin = await prisma.admin.findFirst({
+            where: {
+                OR: [
+                    {email},
+                    {phone_number}
+                ]
+            }
+        })
+
         if (existingUser) {
             response.status(409).json({
                 status: false,
                 message: `User with this email, username or phone number already exists.`
+            })
+            return
+        }
+
+        if (existingAdmin) {
+            response.status(409).json({
+                status: false,
+                message: `User with this email, username or phone number already exists.`            
             })
             return
         }
@@ -581,11 +598,10 @@ export const auth = async (request: Request, response: Response) => {
         }
 
         if (!user && !admin) {
-            response.status(404).json({
+            return response.status(404).json({
                 status: false,
                 message: `User not found.`
             })
-            return
         }
 
         return invalid();
