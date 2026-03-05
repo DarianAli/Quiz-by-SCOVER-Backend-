@@ -46,13 +46,13 @@ export const getQuizById = async (request: Request, response: Response) => {
             return
         }
 
-        if (Number.isNaN(id)) {{
+        if (Number.isNaN(id)) {
             response.status(400).json({
                 success: false,
                 message: "id Quiz must be a number"
             })
             return
-        }}
+        }
 
         const findQuiz = await prisma.quiz.findFirst({
           where: { idQuiz: id }
@@ -169,13 +169,13 @@ export const updateQuiz = async (request: Request, response: Response) => {
         const { quiz_title, quiz_date, duration, status, difficulty } = request.body;
         const id = Number(idQuiz)
 
-        if (Number.isNaN(id)) {{
+        if (Number.isNaN(id)) {
           response.status(400).json({
               success: false,
               message: "id Quiz must be a number"
           })
           return
-      }}
+      }
 
       const findQuiz = await prisma.quiz.findFirst({
         where: { idQuiz: id }

@@ -79,3 +79,45 @@ export const getAllSubject = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const getByID = async (request: Request, response: Response) => {
+    try {
+        const { idSubject } = request.params;
+        const id = Number(idSubject)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findIdSubject = await prisma.subject.findUnique({
+            where: { idSubject: id }
+        })
+
+        if (!findIdSubject) {
+            response.status(404).json({
+                status: false,
+                message: `Subject not found.`
+            })
+            return
+        }
+
+        response.status(200).json({
+            status: true,
+            data: findIdSubject,
+            message: `Show subject data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}

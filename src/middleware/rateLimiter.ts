@@ -74,7 +74,7 @@ export const attemptLimiter = rateLimit({
     handler: (request: Request, response: Response) =>{
         response.status(429).json({
             status: false,
-            message: "Too many request"
+            message: "Too many requests"
         })
     }
 })
