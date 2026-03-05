@@ -121,3 +121,68 @@ export const getByID = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const updateSubject = async (request: Request, response: Response) => {
+    try {
+        const { idSubject } = request.params;
+        const id = Number(idSubject)
+        const { subject_name } = request.body;
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findSubject = await prisma.subject.findUnique({
+            where: { idSubject: id }
+        })
+
+        if (!findSubject) {
+            response.status(404).json({
+                status: false,
+                message: `Subject not found.`
+            })
+            return
+        }
+
+        const existing = await prisma.subject.findFirst({
+            where: {
+                subject_name,
+                idSubject: { not: id }
+            }
+        })
+
+        if (existing) {
+            response.status(400).json({
+                status: false,
+                message: `Subject name already exists`
+            })
+            return
+        }
+
+        const updateDataS = await prisma.subject.update({
+            data: {
+                subject_name: subject_name ?? findSubject.subject_name
+            },
+            where: { idSubject: id }
+        })
+        
+        response.status(200).json({
+            status: true,
+            data: updateDataS,
+            message: `Successfully updated subject data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,  
+            message: `Internal server error.`
+        })
+        return
+    }
+}
