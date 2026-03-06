@@ -186,3 +186,49 @@ export const updateSubject = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const deleteSubject = async (request: Request, response: Response) => {
+    try {
+        const { idSubject } = request.params;
+        const id = Number(idSubject)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findSubject = await prisma.subject.findUnique({
+            where: { idSubject: id }
+        })
+
+        if (!findSubject) {
+            response.status(404).json({
+                status: false,
+                message: `Subject not found.`
+            })
+            return
+        }
+
+        const deleteSubject = await prisma.subject.delete({
+            where: { idSubject: id }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: deleteSubject,
+            message: `Successfully deleted subject.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
