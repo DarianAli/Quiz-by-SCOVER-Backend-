@@ -273,3 +273,55 @@ export const updatePassword = async (request: Request, response : Response) => {
         return
     }
 }
+
+export const deleteAdmin = async (request: Request, response: Response) => {
+    try {
+        const { idAdmin } = request.params;
+        const id = Number(idAdmin)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findAdmin = await prisma.admin.findUnique({
+            where: { idAdmin: id }
+        })
+
+        if (!findAdmin) {
+            response.status(404).json({
+                status: false,
+                message: `Admin not found.`
+            })
+            return
+        }
+
+        const deleteAdmin  = await prisma.admin.delete({
+            where: { idAdmin: id },
+            select: {
+                idAdmin: true,
+                username: true,
+                email: true,
+                role: true
+            }
+        })
+        
+        response.status(200).json({
+            status: true,
+            data: deleteAdmin,
+            message: `successfully delete admin.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
