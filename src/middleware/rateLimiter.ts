@@ -1,4 +1,6 @@
 import rateLimit from "express-rate-limit"
+import { Request, Response } from "express"
+import { status } from "@prisma/client"
 
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
@@ -9,4 +11,70 @@ export const globalLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+})
+
+export const registerLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 5,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many requests"
+        })
+    }
+})
+
+export const postLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 20,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many requests"
+        })
+    }
+})
+
+export const updateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many requests"
+        })  
+    }
+})
+
+export const passwordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many requests"
+        })  
+    }
+})
+
+export const deleteLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many requests"
+        })
+    }
+})
+
+export const attemptLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 5,
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many requests"
+        })
+    }
 })
