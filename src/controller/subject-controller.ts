@@ -232,3 +232,81 @@ export const deleteSubject = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const getSubjectByUser = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.params;
+        const id = Number(idUser)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: { idUser: id },
+            select: {
+                idUser: true,
+                userName: true,
+                classId: true,
+                class: {
+                    select: {
+                        idClass: true,
+                        class_name: true,
+                        class_program: true
+                    }
+                }
+            }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        const subject = await prisma.subjectClass.findMany({
+            where: { classId: findUser.classId },
+            select: {
+                subject: {
+                    select: {
+                        idSubject: true,
+                        uuid: true,
+                        subject_name: true,
+                        created_at: true,
+                        updated_at: true
+                    }
+                }
+            }
+        })
+
+        const subjectList = subject.map(items => items.subject)
+
+        response.status(200).json({
+            status: true,
+            data: {
+                user: {
+                    idUser: findUser.idUser,
+                    userName: findUser.userName
+                },
+                class: findUser.class,
+                subject: subjectList
+            },
+            message: `Successfully get subjects by user class.`
+        })
+        return 
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}

@@ -166,6 +166,7 @@ model answers {
   is_Correct      Boolean       @default(false)
   answered_at     DateTime      @default(now())
 
+
   quizId          Int
   userId          Int
 
