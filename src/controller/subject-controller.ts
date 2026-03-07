@@ -7,32 +7,92 @@ const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const createSubject = async (request: Request, response: Response) => {
     try {
-        const { subject_name } = request.body;
-        const uuid = uuidv4()
+        const { subject_name, classId } = request.body;
+
+        if (classId !== undefined) {
+            if (!Array.isArray(classId) || classId.length === 0) {
+                response.status(400).json({
+                    status: false,
+                    message: `classIds must be a non-empty array.`
+                });
+                return;
+            }
+
+            const uniqueId = [ ...new Set(classId.map(Number)) ]
+
+            const foundClasses = await prisma.classes.findMany({
+                where: {
+                    idClass: { in: uniqueId }
+                }
+            });
+
+            if (foundClasses.length !== uniqueId.length) {
+                response.status(404).json({
+                    status: false,
+                    message: `One or more classId not found.`
+                });
+                return;
+            }
+        }
 
         const existing = await prisma.subject.findFirst({
-            where: { subject_name: subject_name }
+            where: { subject_name }
         })
 
         if (existing) {
-            response.status(400).json({
+            response.status(409).json({
                 status: false,
-                message: `Subject name already exists`
+                message: `Subject with this name already exists.`
             })
             return
         }
+        
+        const uuid = uuidv4()
 
-        const createData = await prisma.subject.create({
+        const newSubject = await prisma.subject.create({
             data: {
                 uuid,
-                subject_name
+                subject_name,
+                ...(classId && {
+                    subjectClass: {
+                        create: classId.map((id: number) => ({
+                            class: {
+                                connect: { idClass: Number(id) }
+                            }
+                        }))
+                    } 
+                })
+            },
+            select: {
+                idSubject: true,
+                uuid: true,
+                subject_name: true,
+                created_at: true,
+                updated_at: true,
+                subjectClass: {
+                    select: {
+                        class: {
+                            select: {
+                                idClass: true,
+                                class_name: true,
+                                class_program: true
+                            }
+                        }
+                    }
+                }
             }
         })
 
+        const result = {
+            ...newSubject,
+            classes: newSubject.subjectClass.map(sc => sc.class),
+            subjectClass: undefined
+        }
+        
         response.status(201).json({
             status: true,
-            data: createData,
-            message: `Successfully created a subject`
+            data: result,
+            message: `Successfully create subject.`
         })
         return
     } catch (error) {

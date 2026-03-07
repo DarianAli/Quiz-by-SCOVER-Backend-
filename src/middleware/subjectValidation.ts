@@ -8,7 +8,8 @@ export const createDataSchema = Joi.object({
         "string.max": "Subject name must not exceed 100 characters",
         "string.pattern.base": "Subject name can only contain letters, numbers, single spaces, and hyphens (-). No special characters allowed.",
         "any.required": "Subject name is required"
-    })
+    }),
+    classId: Joi.array().optional()
 })
 
 export const updateDataSchema = Joi.object({
