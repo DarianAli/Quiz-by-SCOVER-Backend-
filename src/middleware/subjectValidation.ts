@@ -22,6 +22,22 @@ export const updateDataSchema = Joi.object({
     })
 })
 
+export const assignDataSchema = Joi.object({
+    classId : Joi.array().required()
+})
+
+export const assignDataValidation = (request: Request, response: Response, next: NextFunction) => {
+    const { error } = assignDataSchema.validate(request.body, { abortEarly: false })
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            message: error.details.map(it => it.message).join()
+        })
+        return
+    }
+    return next()
+}
 
 export const createDataValidation = (request: Request, response: Response, next: NextFunction) => {
     const { error } = createDataSchema.validate(request.body, { abortEarly: false })
