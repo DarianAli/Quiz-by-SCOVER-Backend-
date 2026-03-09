@@ -106,13 +106,141 @@ export const createSubject = async (request: Request, response: Response) => {
     }
 }
 
+export const assignSubject = async (request: Request, response: Response) => {
+    try {
+        const { idSubject } = request.params;
+        const { classId } = request.body;
+        const id = Number(idSubject)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        if (!Array.isArray(classId) || classId.length === 0) {
+            response.status(400).json({
+                status: false,
+                message: `classId must be a non-empty array.`
+            })
+            return
+        }
+
+        const findSubject = await prisma.subject.findUnique({
+            where: { idSubject: id }
+        })
+
+        if (!findSubject) {
+            response.status(404).json({
+                status: false,
+                message: `Subject not found.`
+            })
+            return
+        }
+
+        const foundClass = await prisma.classes.findMany({
+            where: {
+                idClass: {in: classId.map(Number)}
+            }
+        })
+
+        if (foundClass.length !== classId.length) {
+            response.status(404).json({
+                status: false,
+                message: `One or more classId not found.`
+            })
+            return
+        }
+
+        const existingLink = await prisma.subjectClass.findMany({
+            where: {
+                subjectId: id,
+                classId: { in: classId.map(Number) }
+            }
+        })
+
+        const existingClass = existingLink.map(link => link.classId);
+        const newClassId = classId
+            .map(Number)
+            .filter((cid: number) => !existingClass.includes(cid))
+
+        if (newClassId.length === 0) {
+            response.status(409).json({
+                status: false,
+                message: `Subject is already assigned to all provided classes.`
+            })
+            return
+        }
+
+        await prisma.subjectClass.createMany({
+            data: newClassId.map((classId: number) => ({
+                subjectId: id,
+                classId
+            }))
+        })
+
+        const updateSubject = await prisma.subject.findUnique({
+            where: { idSubject: id },
+            select: {
+                idSubject: true,
+                uuid: true,
+                subject_name: true,
+                subjectClass: {
+                    select: {
+                        class: {
+                            select: {
+                                idClass: true,
+                                class_name: true,
+                                class_program: true
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        const result = {
+            ...updateSubject,
+            classes: updateSubject?.subjectClass.map(sc => sc.class),
+            subjectClass: undefined
+        };
+
+        response.status(200).json({
+            status: true,
+            data: result,
+            message: `Successfully assigned subject to class(es).`
+        });
+        return;
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
 export const getAllSubject = async (request: Request, response: Response) => {
     try {
         const  search  = request.query.search?.toString() ?? "";
 
 
         const findSubject = await prisma.subject.findMany({
-            where: { subject_name: { contains: search?.toString() } }
+            where: { 
+                subject_name: { contains: search?.toString() }
+            },
+            include: {
+                subjectClass: {
+                    select: {
+                        classId: true,
+                        class: true
+                    }
+                }
+            }
         })
 
         if (findSubject.length === 0) {
