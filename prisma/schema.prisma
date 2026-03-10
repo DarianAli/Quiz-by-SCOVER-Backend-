@@ -165,6 +165,7 @@ model answers {
   student_answer  String        @default("")
   answered_at     DateTime      @default(now())
 
+
   quizId          Int
   userId          Int
   questionsId     Int
