@@ -7,6 +7,7 @@ import userRoute from "./Router/userRoute"
 import classRoute from "./Router/classRouter"
 import adminRoute from "./Router/adminRouter"
 import quizRoute from "./Router/quizRouter"
+import questionRouter from "./Router/questionRouter"
 import { globalLimiter } from "./middleware/rateLimiter"
 
 
@@ -20,6 +21,7 @@ app.use("/user", userRoute)
 app.use("/class", classRoute)
 app.use("/admin", adminRoute)
 app.use("/quiz", quizRoute)
+app.use("/question", questionRouter)
 
 app.listen(PORT, () => {
     console.log(`Server running at port ${PORT}`)

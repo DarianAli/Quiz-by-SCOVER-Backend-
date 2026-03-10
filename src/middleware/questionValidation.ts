@@ -1,23 +1,22 @@
-import { Request, Response, NextFunction } from "express";
-import Joi from 'joi'
+import { Response, Request, NextFunction } from "express"
+import Joi from "joi"
 
 const addDataSchema = Joi.object ({
-    quiz_title: Joi.string().required(),
-    quiz_date: Joi.date().required(),
-    duration: Joi.number().min(0).required(),
-    status: Joi.string().valid('COMPLETED', 'INCOMPLETED').required(),
+    question_text: Joi.string().required(),
+    question_image: Joi.string().optional(),
     difficulty: Joi.string().valid('EASY', 'MEDIUM', 'HARD').required(),
+    poin: Joi.number().min(0).required(),
+    quizId: Joi.number().required()
 })
 
 const editDataSchema = Joi.object ({
-    quiz_title: Joi.string().optional(),
-    quiz_date: Joi.date().optional(),
-    duration: Joi.number().min(0).optional(),
-    status: Joi.string().valid('COMPLETED', 'INCOMPLETED').optional(),
+    question_text: Joi.string().optional(),
+    question_image: Joi.string().optional(),
     difficulty: Joi.string().valid('EASY', 'MEDIUM', 'HARD').optional(),
+    poin: Joi.number().min(0).optional(),
 })
 
-export const verifyAddQuiz = (request: Request, response: Response, next: NextFunction) =>  {
+export const verifyAddQuestion = (request: Request, response: Response, next: NextFunction) =>  {
     const {error} = addDataSchema.validate(request.body, {abortEarly: false});
 
     if(error) {
@@ -29,10 +28,10 @@ export const verifyAddQuiz = (request: Request, response: Response, next: NextFu
     return next();
 }
 
-export const verifyEditQuiz = (request: Request, response: Response, next: NextFunction) =>  {
+export const verifyEditQuestion = (request: Request, response: Response, next: NextFunction) =>  {
     const {error} = editDataSchema.validate(request.body, {abortEarly: false});
 
-    if (error) {
+    if(error) {
         return response.status(400).json({
             status: false,
             message: error.details.map(it => it.message).join()
