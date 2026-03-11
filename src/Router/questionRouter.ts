@@ -5,7 +5,7 @@ import { postLimiter, updateLimiter, deleteLimiter } from "../middleware/rateLim
 import { verifyAddQuestion, verifyEditQuestion } from "../middleware/questionValidation"
 
 const app = express()
-app.use(express.json())
+app.use(express.json({ strict: false }))
 
 app.post('/add', postLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR"]), verifyAddQuestion], createQuestion)
 
