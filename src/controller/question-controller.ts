@@ -78,7 +78,6 @@ export const updateQuestion = async (request: Request, response: Response) => {
             return
         }
 
-        const parsedQuizId = Number(quizId);
         const parsedPoin = Number(poin);
 
         if (Number.isNaN(parsedPoin)) {
@@ -92,10 +91,10 @@ export const updateQuestion = async (request: Request, response: Response) => {
         const updatedQuestion = await prisma.questions.update({
             where: { idQuestion: Number(idQuestion) },
             data: {
-                question_text,
-                question_image,
-                difficulty,
-                poin: parsedPoin
+                question_text: question_text ?? findQuestion.question_text,
+                question_image: question_image ?? findQuestion.question_image,
+                difficulty: difficulty ?? findQuestion.difficulty,
+                poin: parsedPoin ?? findQuestion.poin,
             }
         })
 
