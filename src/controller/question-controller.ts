@@ -204,3 +204,49 @@ export const getQuestionById = async (request: Request, response: Response) => {
         return
     }
 }
+
+export const deleteQuestion = async (request: Request, response: Response) => {
+    try{ 
+        const { idQuestion } = request.params;
+        const id = Number(idQuestion)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                success: false,
+                message: "id must be a number"
+            })
+            return
+        }
+
+        const findQuestion = await prisma.questions.findFirst ({
+            where: { idQuestion: id }
+        })
+
+        if (!findQuestion) {
+            response.status(404).json ({
+                success: false,
+                message: "question not found"
+            })
+            return
+        }
+
+        const deletedQuestion = await prisma.questions.delete({
+            where: { idQuestion: Number(idQuestion) }
+        })
+
+        response.status(200).json({
+            success: true,
+            data: deletedQuestion,
+            message: "question deleted successfully"
+        })
+        return
+
+    } catch (error) {
+        console.error(error)
+        response.status(500).json({
+            success: false,
+            message: "failed to delete question."
+        })
+        return
+    }
+}

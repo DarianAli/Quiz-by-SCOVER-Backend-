@@ -1,5 +1,5 @@
 import express from "express"
-import { createQuestion, updateQuestion, getAllQuestion, getQuestionById } from "../controller/question-controller"
+import { createQuestion, updateQuestion, getAllQuestion, getQuestionById, deleteQuestion } from "../controller/question-controller"
 import { verifyRole, verifyToken } from "../middleware/auth"
 import { postLimiter, updateLimiter, deleteLimiter } from "../middleware/rateLimiter"
 import { verifyAddQuestion, verifyEditQuestion } from "../middleware/questionValidation"
@@ -11,5 +11,6 @@ app.post('/add', postLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR"]), ver
 app.put('/update/:idQuestion', updateLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR"]), verifyEditQuestion], updateQuestion)
 app.get('/allData', [verifyToken, verifyRole(["ADMIN", "TENTOR"])], getAllQuestion)
 app.get('/byID/:idQuestion', [verifyToken, verifyRole(["ADMIN", "TENTOR"])], getQuestionById)
+app.delete('/delete/:idQuestion', deleteLimiter, [verifyToken, verifyRole(["ADMIN"])], deleteQuestion)
 
 export default app
