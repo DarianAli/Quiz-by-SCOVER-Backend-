@@ -115,7 +115,7 @@ model quiz {
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt
 
-  subject         subject?       @relation(fields: [subjectId], references: [idSubject])
+  subject         subject?      @relation(fields: [subjectId], references: [idSubject])
   subjectId       Int?
 
   scores          scores[]
@@ -163,30 +163,46 @@ model answers {
   idAnswers       Int           @id @default(autoincrement())
   uuid            String        @unique @default("")
   student_answer  String        @default("")
-  is_Correct      Boolean       @default(false)
   answered_at     DateTime      @default(now())
 
 
   quizId          Int
   userId          Int
+  questionsId     Int
+  optionsId       Int
 
   quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
   user            user          @relation(fields: [userId], references: [idUser])
+  questions       questions     @relation(fields: [questionsId], references: [idQuestion])
+  options         options       @relation(fields: [optionsId], references: [idOption])
+
+  @@unique([userId, quizId, questionsId])
 }
 
 model questions {
   idQuestion      Int           @id @default(autoincrement())
   uuid            String        @unique @default("")
   question_text   String        @default("")
-  questions_image String        @default("")
-  option_a        String        @default("")
-  option_b        String        @default("")
-  option_c        String        @default("")
-  option_d        String        @default("")
-  correct_answers String        @default("")
+  question_image String         @default("")
   difficulty      difficulty    @default(EASY)
   poin            Int           @default(0)
 
   quizId          Int
   quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+
+  options         options[]
+  answers         answers[]
+}
+
+model options {
+  idOption        Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  option_text     String        @default("")
+  option_image    String        @default("")
+  is_correct      Boolean       @default(false)
+
+  answers         answers[]
+
+  questionsId     Int
+  questions       questions     @relation(fields: [questionsId], references: [idQuestion])
 }
