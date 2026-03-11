@@ -9,14 +9,6 @@ export const createQuestion = async (request: Request, response: Response) => {
         const { question_text, question_image, difficulty, poin, quizId } = request.body;
         const uuid = uuidv4()
 
-        if (!question_text || quizId === undefined || poin === undefined) {
-            response.status(400).json({
-                success: false,
-                message: "Missing required fields: question_text, quizId, and poin are required"
-            });
-            return;
-        }
-
         const parsedQuizId = Number(quizId);
         const parsedPoin = Number(poin);
 
@@ -57,4 +49,69 @@ export const createQuestion = async (request: Request, response: Response) => {
         })
         return
     }
+}
+
+
+export const updateQuestion = async (request: Request, response: Response) => {
+    try {
+        const { idQuestion } = request.params;
+        const { question_text, question_image, difficulty, poin, quizId } = request.body;
+        const id = Number(idQuestion)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                success: false,
+                message: "id must be a number"
+            })
+            return
+        }
+
+        const findQuestion = await prisma.questions.findFirst ({
+            where: { idQuestion: id }
+        })
+
+        if (!findQuestion) {
+            response.status(404).json ({
+                success: false,
+                message: "question not found"
+            })
+            return
+        }
+
+        const parsedQuizId = Number(quizId);
+        const parsedPoin = Number(poin);
+
+        if (Number.isNaN(parsedPoin)) {
+            response.status(400).json({
+                success: false,
+                message: "poin must be valid numbers"
+            });
+            return;
+        }
+
+        const updatedQuestion = await prisma.questions.update({
+            where: { idQuestion: Number(idQuestion) },
+            data: {
+                question_text,
+                question_image,
+                difficulty,
+                poin: parsedPoin
+            }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: updatedQuestion,
+            message: "question updated successfully"
+        })
+        return
+
+    }   catch (error) {
+        console.error(error)
+        response.status(500).json({
+            status: false,
+            message: `failed to update question.`
+        })
+        return
+        }
 }
