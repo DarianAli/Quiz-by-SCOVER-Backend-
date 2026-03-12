@@ -1,247 +1,32 @@
 import { Request, Response } from "express";
-import { v4 as uuidv4 } from "uuid"
-import { PrismaClient, role } from "../../generated/prisma/client"; 
-import bcrypt from "bcrypt"
-import Jwt from "jsonwebtoken"
-import { parseExcelBuffer } from "../service/excel.parser";
-import { UserRow, validateUserRow } from "../utils/userRow.validator";
+import { v4 as uuidv4 } from "uuid";
+import { PrismaClient, role } from "../../generated/prisma/client";
+import bcrypt from "bcrypt";
+import Jwt from "jsonwebtoken";
+import {
+    parseAndValidateFile,
+    validateRows,
+    checkClassExistence,
+    checkDatabaseConflicts,
+    prepareUsersForInsert,
+    insertUsers,
+    sendBulkUploadResponse,
+    handleBulkUploadError,
+} from "../services/bulkUserUpload.service";
 
-interface UploadError {
-    row: number,
-    data: Partial<UserRow>
-    errors: string[]
-}
+const prisma = new PrismaClient({ errorFormat: "pretty" });
 
-const VALID_ROLES = Object.values(role);
-
-const prisma = new PrismaClient({ errorFormat: "pretty" })
-
-export const bulkCreateUsers = async (request: Request, response: Response) => {
+export const bulkCreateUsers = async (request: Request, response: Response): Promise<void> => {
     try {
-        if (!request.file) {
-            response.status(400).json({
-                status:  false,
-                message: "No file uploaded. Please upload an .xlsx or .csv file.",
-            });
-            return;
-        }
-
-        let rows: UserRow[];
-        try {
-            rows = await parseExcelBuffer(request.file.buffer);
-        } catch {
-            response.status(400).json({
-                status:  false,
-                message: "Failed to parse the uploaded file. Ensure it matches the required template.",
-            });
-            return;
-        }
-
-        if (rows.length === 0) {
-            response.status(400).json({
-                status:  false,
-                message: "The uploaded file contains no data rows.",
-            });
-            return;
-        }
-
-        const uploadErrors: UploadError[] = [];
-        const validRows: { row: number; data: UserRow }[] = [];
-
-        rows.forEach((row, idx) => {
-            const rowNumber = idx + 2; // +2 because row 1 is the header
-            const result = validateUserRow(row, rowNumber);
-            if (!result.valid) {
-                uploadErrors.push({ row: rowNumber, data: row, errors: result.errors });
-            } else {
-                validRows.push({ row: rowNumber, data: row });
-            }
-        });
-
-        const uniqueClassIds = [...new Set(validRows.map(r => Number(r.data.classId)))];
-        const existingClasses = await prisma.classes.findMany({
-            where: { idClass: { in: uniqueClassIds } },
-            select: { idClass: true },
-        });
-        const validClassIds = new Set(existingClasses.map(c => c.idClass));
-
-        const rowsWithBadClass: typeof validRows = [];
-        const rowsPassedClassCheck: typeof validRows = [];
-
-        for (const item of validRows) {
-            if (!validClassIds.has(Number(item.data.classId))) {
-                uploadErrors.push({
-                    row:    item.row,
-                    data:   item.data,
-                    errors: [`Row ${item.row}: classId ${item.data.classId} does not exist.`],
-                });
-                rowsWithBadClass.push(item);
-            } else {
-                rowsPassedClassCheck.push(item);
-            }
-        }
-
-        if (rowsPassedClassCheck.length === 0) {
-            response.status(422).json({
-                status:       false,
-                message:      "All rows failed validation. No users were created.",
-                total_failed: uploadErrors.length,
-                errors:       uploadErrors,
-            });
-            return;
-        }
-
-        const fileUserNames    = rowsPassedClassCheck.map(r => r.data.userName);
-        const fileEmails       = rowsPassedClassCheck.map(r => r.data.email);
-        const filePhoneNumbers = rowsPassedClassCheck.map(r => r.data.phone_number);
-
-        const seenInFile = {
-            userNames:    new Map<string, number>(),
-            emails:       new Map<string, number>(),
-            phoneNumbers: new Map<string, number>(),
-        };
-
-        const [dbUsers, dbAdmins] = await Promise.all([
-            prisma.user.findMany({
-                where: {
-                    OR: [
-                        { userName:     { in: fileUserNames    } },
-                        { email:        { in: fileEmails       } },
-                        { phone_number: { in: filePhoneNumbers } },
-                    ],
-                },
-                select: { userName: true, email: true, phone_number: true },
-            }),
-            prisma.admin.findMany({
-                where: {
-                    OR: [
-                        { email:        { in: fileEmails       } },
-                        { phone_number: { in: filePhoneNumbers } },
-                    ],
-                },
-                select: { email: true, phone_number: true },
-            }),
-        ]);
-
-        const dbUserNames    = new Set(dbUsers.map(u => u.userName));
-        const dbEmails       = new Set([...dbUsers.map(u => u.email),  ...dbAdmins.map(a => a.email)]);
-        const dbPhoneNumbers = new Set([...dbUsers.map(u => u.phone_number), ...dbAdmins.map(a => a.phone_number)]);
-
-        const toInsert: {
-            uuid:                 string;
-            userName:             string;
-            email:                string;
-            password:             string;
-            full_name:            string;
-            role:                 role;
-            phone_number:         string;
-            classId:              number;
-            parent_full_name:     string;
-            parent_phone_number:  string;
-        }[] = [];
-
-        for (const item of rowsPassedClassCheck) {
-            const { data, row } = item;
-            const rowErrors: string[] = [];
-
-            if (seenInFile.userNames.has(data.userName)) {
-                rowErrors.push(`Row ${row}: userName "${data.userName}" is duplicated within the file (first seen at row ${seenInFile.userNames.get(data.userName)}).`);
-            } else {
-                seenInFile.userNames.set(data.userName, row);
-            }
-
-            if (seenInFile.emails.has(data.email)) {
-                rowErrors.push(`Row ${row}: email "${data.email}" is duplicated within the file.`);
-            } else {
-                seenInFile.emails.set(data.email, row);
-            }
-
-            if (seenInFile.phoneNumbers.has(data.phone_number)) {
-                rowErrors.push(`Row ${row}: phone_number "${data.phone_number}" is duplicated within the file.`);
-            } else {
-                seenInFile.phoneNumbers.set(data.phone_number, row);
-            }
-
-            if (dbUserNames.has(data.userName)) {
-                rowErrors.push(`Row ${row}: userName "${data.userName}" already exists in the database.`);
-            }
-            if (dbEmails.has(data.email)) {
-                rowErrors.push(`Row ${row}: email "${data.email}" already exists in the database.`);
-            }
-            if (dbPhoneNumbers.has(data.phone_number)) {
-                rowErrors.push(`Row ${row}: phone_number "${data.phone_number}" already exists in the database.`);
-            }
-
-            if (rowErrors.length > 0) {
-                uploadErrors.push({ row, data, errors: rowErrors });
-                continue;
-            }
-
-
-            const trimmedRole = data.role.trim();
-            if (!VALID_ROLES.includes(trimmedRole as role)) {
-                uploadErrors.push({ row, data, errors: [`Row ${row}: Invalid role "${trimmedRole}".`] });
-                continue;
-            }
-
-            const rawPassword = `${data.userName}123`;
-            const hashedPassword = await bcrypt.hash(rawPassword, 10);
-
-            toInsert.push({
-                uuid:                uuidv4(),
-                userName:            data.userName,
-                email:               data.email,
-                password:            hashedPassword,
-                full_name:           data.full_name,
-                role:                trimmedRole as role,
-                phone_number:        data.phone_number,
-                classId:             Number(data.classId),
-                parent_full_name:    data.parent_full_name  ?? "",
-                parent_phone_number: data.parent_phone_number ?? "",
-            });
-        }
-
-        // ── 7. Prisma createMany ───────────────────────────────────────────────
-        let createdCount = 0;
-
-        if (toInsert.length > 0) {
-            const result = await prisma.user.createMany({
-                data:           toInsert,
-                skipDuplicates: true, // safety net for any race conditions
-            });
-            createdCount = result.count;
-            if (createdCount < toInsert.length) {
-                console.warn(
-                    `[bulkCreateUsers] ${toInsert.length - createdCount} row(s) skipped due to race condition duplicates`
-                );
-            }
-        }
-
-        // ── 8. Response ────────────────────────────────────────────────────────
-        const statusCode = uploadErrors.length > 0 && createdCount === 0 ? 422
-                         : uploadErrors.length > 0                       ? 207 // Multi-Status: partial success
-                         :                                                 201;
-
-        response.status(statusCode).json({
-            status:          createdCount > 0,
-            message:
-                createdCount === 0
-                    ? "No users were created. All rows failed."
-                    : `Successfully created ${createdCount} user(s).${uploadErrors.length > 0 ? ` ${uploadErrors.length} row(s) failed.` : ""}`,
-            total_rows:      rows.length,
-            total_created:   createdCount,
-            total_failed:    uploadErrors.length,
-            errors:          uploadErrors.length > 0 ? uploadErrors : undefined,
-        });
-        return;
-
+        const rows                        = await parseAndValidateFile(request.file);
+        const { validRows, uploadErrors } = validateRows(rows);
+        const classRows                   = await checkClassExistence(validRows, uploadErrors);
+        const cleanRows                   = await checkDatabaseConflicts(classRows, uploadErrors);
+        const toInsert                    = await prepareUsersForInsert(cleanRows, uploadErrors);
+        const createdCount                = await insertUsers(toInsert);
+        sendBulkUploadResponse(response, rows.length, createdCount, uploadErrors);
     } catch (error) {
-        console.error("[bulkCreateUsers]", error);
-        response.status(500).json({
-            status:  false,
-            message: "Internal server error.",
-        });
-        return;
+        handleBulkUploadError(response, error);
     }
 };
 
