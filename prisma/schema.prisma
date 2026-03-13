@@ -55,6 +55,7 @@ model user {
   full_name       String        @default("")
   email           String        @default("")
   role            role          @default(STUDENT)
+  photoProfile    String        @default("https://cdn-icons-png.flaticon.com/512/149/149071.png")
   class           classes       @relation(fields: [classId], references: [idClass])
   classId         Int
   phone_number    String        @default("")
