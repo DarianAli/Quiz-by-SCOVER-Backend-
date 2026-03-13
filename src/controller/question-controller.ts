@@ -1,7 +1,8 @@
 import { Response, Request } from "express";
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
-import { request } from "http";
+import { BASE_URL } from "../../global";
+import fs from "fs"
 
 const prisma = new PrismaClient({ errorFormat: "pretty" })
 
@@ -9,6 +10,9 @@ export const createQuestion = async (request: Request, response: Response) => {
     try {
         const { question_text, question_image, difficulty, poin, quizId } = request.body;
         const uuid = uuidv4()
+
+        let filename = ""
+        if (request.file) filename = request .file.filename
 
         const parsedQuizId = Number(quizId);
         const parsedPoin = Number(poin);
@@ -26,7 +30,7 @@ export const createQuestion = async (request: Request, response: Response) => {
             data: {
                 uuid,
                 question_text,
-                question_image,
+                question_image: filename,
                 difficulty,
                 poin: parsedPoin,
                 quizId: parsedQuizId
@@ -79,6 +83,15 @@ export const updateQuestion = async (request: Request, response: Response) => {
             return
         }
 
+        let filename = findQuestion.question_image
+        if (request.file) {
+            filename = request.file.filename
+            
+            let path = `${BASE_URL}/../public/question_image/${findQuestion.question_image}`
+            let exist = fs.existsSync(path)
+            if(exist && findQuestion.question_image !== ``) fs.unlinkSync(path)
+        }
+
         const parsedPoin = Number(poin);
 
         if (Number.isNaN(parsedPoin)) {
@@ -93,7 +106,7 @@ export const updateQuestion = async (request: Request, response: Response) => {
             where: { idQuestion: Number(idQuestion) },
             data: {
                 question_text: question_text ?? findQuestion.question_text,
-                question_image: question_image ?? findQuestion.question_image,
+                question_image: filename,
                 difficulty: difficulty ?? findQuestion.difficulty,
                 poin: parsedPoin ?? findQuestion.poin,
             }
@@ -229,6 +242,11 @@ export const deleteQuestion = async (request: Request, response: Response) => {
             })
             return
         }
+
+        let path = `${BASE_URL}/../public/question_image/${findQuestion.question_image}`
+        let exist = fs.existsSync(path)
+        if(exist && findQuestion.question_image !== ``) fs.unlinkSync(path)
+        
 
         const deletedQuestion = await prisma.questions.delete({
             where: { idQuestion: Number(idQuestion) }
