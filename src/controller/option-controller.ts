@@ -57,7 +57,7 @@ export const createOption = async (request: Request, response: Response) => {
 export const updateOption = async (request: Request, response: Response) => {
     try {
         const { idOption } = request.params;
-        const { option_text, option_image } = request.body;
+        const { option_text, option_image,  } = request.body;
         const id = Number(idOption)
 
         if (Number.isNaN(id)) {
@@ -112,6 +112,79 @@ export const updateOption = async (request: Request, response: Response) => {
         response.status(500).json({
             success: false,
             message: "failed to update option"
+        })
+        return
+    }
+}
+
+export const getAllOption = async (request: Request, response: Response) => {
+    try {
+        const { search } = request.query;
+
+        const getAllOption = await prisma.options.findMany({
+            where: { option_text: { contains: search?.toString() || "" } },
+            include: {
+                answers: true,
+                questions: true
+            }
+        })
+
+        response.status(200).json({
+            success: true,
+            data: getAllOption,
+            message: "All option found successfully"
+        })
+        return
+    } catch (error) {
+        console.error(error)
+        response.status(500).json({
+            success: false,
+            message: "failed to fetch all option"
+        })
+        return
+    }
+}
+
+export const getOptionById = async (request: Request, response: Response) => {
+    try {
+        const idOption = request.params.idOption;
+        const id = Number(idOption)
+
+        if (!idOption) {
+                response.status(400).json({
+                success: false,
+                message: "id Option is required"
+            })
+            return
+        }
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                success: false,
+                message: "id must be a number"
+            })
+            return
+        }
+
+        const findOption = await prisma.options.findFirst({
+            where: { idOption: id },
+            include: {
+                answers: true,
+                questions: true
+            }
+        })
+
+        response.status(200).json({
+            success: true,
+            data: findOption,
+            message: "option found successfully"
+        })
+        return
+    } catch (error) {
+        console.error(error)
+        response.status(500).json({
+            success: false,
+            message: "failed to fetch option"
         })
         return
     }
