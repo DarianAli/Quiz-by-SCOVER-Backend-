@@ -9,6 +9,9 @@ export const createOption = async (request: Request, response: Response) => {
         const { option_text, option_image, questionId } = request.body;
         const uuid = uuidv4();
 
+        let filename = "";
+        if (request.file) filename = request.file.filename;
+
         const parsedQuestionId = Number(questionId);
 
         if (Number.isNaN(parsedQuestionId) || Number.isNaN(parsedQuestionId)) {
@@ -23,7 +26,7 @@ export const createOption = async (request: Request, response: Response) => {
             data: {
                 uuid,
                 option_text,
-                option_image,
+                option_image: filename,
                 is_correct: false,
                 questionsId: parsedQuestionId
             },
