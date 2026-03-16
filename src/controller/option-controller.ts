@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
+import { BASE_URL } from "../../global";
+import fs from "fs";
 
 const prisma = new PrismaClient({ errorFormat: "pretty" });
 
@@ -47,6 +49,69 @@ export const createOption = async (request: Request, response: Response) => {
         response.status(500).json({
             success: false,
             message: "failed to create option"
+        })
+        return
+    }
+}
+
+export const updateOption = async (request: Request, response: Response) => {
+    try {
+        const { idOption } = request.params;
+        const { option_text, option_image } = request.body;
+        const id = Number(idOption)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                success: false,
+                message: "id must be a number"
+            })
+            return
+        }
+
+        const findOption = await prisma.options.findFirst({
+            where: { idOption: id }
+        })
+
+        if (!findOption) {
+            response.status(404).json({
+                success: false,
+                message: "option not found"
+            })
+            return
+        }
+
+        let filename = findOption.option_image
+        if (request.file) {
+            filename = request.file.filename
+
+            let path  = `${BASE_URL}/public/option_image/${findOption.option_image}`
+            let exists = fs.existsSync(path)
+
+            if(exists && findOption.option_image !== ``) fs.unlinkSync(path)
+        }
+
+        const updatedOption = await prisma.options.update({
+            where: { idOption: Number(idOption) },
+            data: {
+                option_text: option_text ?? findOption.option_text,
+                option_image: filename
+            },
+            include: {
+                answers: true,
+                questions: true
+            }
+        })
+        response.status(200).json({
+            success: true,
+            data: updatedOption,
+            message: "option updated successfully"
+        })
+        return
+    } catch (error) {
+        console.error(error)
+        response.status(500).json({
+            success: false,
+            message: "failed to update option"
         })
         return
     }
