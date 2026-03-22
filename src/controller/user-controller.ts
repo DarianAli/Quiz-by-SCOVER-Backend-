@@ -32,7 +32,7 @@ export const bulkCreateUsers = async (request: Request, response: Response): Pro
 
 export const createUser = async (request: Request, response: Response) => {
     try {
-        const { userName, email, password, full_name, role, phone_number, parent_full_name, parent_phone_number, classId } = request.body;
+        const { userName, email, password, full_name, role, phone_number, parent_full_name, parent_phone_number, classId, photoProfile } = request.body;
         const uuid = uuidv4()
         const hashed = await bcrypt.hash(password, 10)
 
