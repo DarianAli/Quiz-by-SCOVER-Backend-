@@ -33,6 +33,6 @@ app.get("/get/:idUser", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])
 app.put("/update/:idUser", updateLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), verifyOwnershipOrAdmin, onlyAdminCanChangeRole, updateData, phoneValidation(["phone_number", "parent_phone_number"])], updateUser)
 app.put("/:idUser/admin/password", passwordLimiter, [verifyToken, verifyRole(["ADMIN"]), updatePasswordData], updatePasswordAdmin)
 app.put("/password/:idUser", passwordLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), verifyOwnershipOrAdmin, updatePasswordDataUser], updatePasswordUser)
-app.delete("/delete/:idUser",deleteLimiter, [verifyToken, verifyRole(["ADMIN"])], deleteUser)
+app.delete("/delete/:idUser", deleteLimiter, [verifyToken, verifyRole(["ADMIN"])], deleteUser)
 
 export default app

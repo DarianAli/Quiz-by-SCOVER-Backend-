@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, status } from "../../generated/prisma/client";
+import { PrismaClient } from "@prisma/client"
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { v4 as uuidv4 } from "uuid"
 import "dotenv/config";

@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { PrismaClient, role } from "../../generated/prisma/client";
+import { PrismaClient, role } from "@prisma/client"
 import { parseExcelBuffer } from "../service/excel.parser";
 import { UserRow, validateUserRow } from "../utils/userRow.validator";
 import { UploadError, UserInsertPayload, ValidatedRow } from "../types/user.types";

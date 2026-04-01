@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "../../generated/prisma";
+import { PrismaClient } from "@prisma/client"
 import { v4 as uuidv4 } from "uuid"
 import bcrypt from "bcrypt"
 import { date } from "joi";

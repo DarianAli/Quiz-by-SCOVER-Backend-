@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { PrismaClient, role } from "../../generated/prisma/client";
+import { PrismaClient } from "@prisma/client"
 import bcrypt from "bcrypt";
 import Jwt from "jsonwebtoken";
 import {
@@ -143,7 +143,8 @@ export const getAllUser = async (request: Request, response: Response) => {
                 phone_number: true,
                 parent_full_name: true,
                 parent_phone_number: true,
-                class: true
+                class: true,
+                created_at: true
             }
         })
 
@@ -189,7 +190,8 @@ export const getById = async (request: Request, response: Response) => {
                 phone_number: true,
                 parent_full_name: true,
                 parent_phone_number: true,
-                class: true
+                class: true,
+                created_at: true
             }
         })
 
