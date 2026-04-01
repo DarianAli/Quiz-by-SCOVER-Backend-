@@ -1,11 +1,8 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "../../generated/prisma";
 import { v4 as uuidv4 } from "uuid"
 import bcrypt from "bcrypt"
-import { date } from "joi";
+import prisma from "../config/prisma";
 
-
-const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const createAdmin = async (request: Request, response: Response) => {
     try {
@@ -141,7 +138,7 @@ export const updateAdmin = async (request: Request, response: Response) => {
             return
         }
 
-        const findDUplicates = await prisma.admin.findFirst({
+        const findDuplicates = await prisma.admin.findFirst({
             where: {
                 OR: [
                     {username},
@@ -154,22 +151,22 @@ export const updateAdmin = async (request: Request, response: Response) => {
             }
         })
 
-        if (findDUplicates) {
-            if (email && findDUplicates.email === email) {
+        if (findDuplicates) {
+            if (email && findDuplicates.email === email) {
                 return response.status(409).json({
                     status: false,
                     message: `Email already used.`
                 })
             }
 
-            if (username && findDUplicates.username === username) {
+            if (username && findDuplicates.username === username) {
                 return response.status(409).json({
                     status: false,
                     message: `Username already used.`
                 })
             }
 
-            if (phone_number && findDUplicates.phone_number === phone_number) {
+            if (phone_number && findDuplicates.phone_number === phone_number) {
                 return response.status(409).json({
                     status: false,
                     message: `Phone number already used.`

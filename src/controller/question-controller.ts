@@ -1,9 +1,7 @@
 import { Response, Request } from "express";
-import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
-import { request } from "http";
+import prisma from "../config/prisma";
 
-const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const createQuestion = async (request: Request, response: Response) => {
     try {

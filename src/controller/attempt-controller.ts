@@ -1,7 +1,6 @@
 import { Response, Request } from "express"
-import { PrismaClient } from "@prisma/client"
+import prisma from "../config/prisma";
 
-const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const startAttempt = async (request: Request, response: Response) => {
     try {

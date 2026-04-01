@@ -1,8 +1,7 @@
 import { Response, Request } from "express"
-import { PrismaClient } from "@prisma/client"
 import { v4 as uuidv4 } from "uuid";
+import prisma from "../config/prisma";
 
-const prisma = new PrismaClient ({ errorFormat: "pretty"})
 
 export const getAllQuiz = async (request: Request, response: Response) => {
     try {
@@ -18,7 +17,7 @@ export const getAllQuiz = async (request: Request, response: Response) => {
         })
 
             response.status(200).json({
-            success: true,
+            status: true,
             data : AllQuiz,
             message : "All quiz found successfully"
         })
@@ -26,7 +25,7 @@ export const getAllQuiz = async (request: Request, response: Response) => {
     } catch (error) {
             console.error(error)
             response.status(500).json({
-              success: false,
+              status: false,
               message: `failed to fetch all quiz.`
         })
         return
@@ -237,7 +236,7 @@ export const deleteQuiz = async (request: Request, response: Response) => {
 
     if (!findQuiz) {
         response.status(404).json({
-            success: false,
+            status: false,
             message: "quiz not found"
         })
         return

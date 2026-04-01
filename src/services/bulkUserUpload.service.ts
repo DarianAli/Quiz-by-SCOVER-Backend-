@@ -1,12 +1,12 @@
 import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { PrismaClient, role } from "../../generated/prisma/client";
+import { role } from "../../generated/prisma/client";
 import { parseExcelBuffer } from "../service/excel.parser";
 import { UserRow, validateUserRow } from "../utils/userRow.validator";
 import { UploadError, UserInsertPayload, ValidatedRow } from "../types/user.types";
 import { UserService } from "./user.service";
+import prisma from "../config/prisma";
 
-const prisma = new PrismaClient({ errorFormat: "pretty" });
 
 const VALID_ROLES = Object.values(role);
 

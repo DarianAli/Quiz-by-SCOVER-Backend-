@@ -1,13 +1,8 @@
 import { Request, Response } from "express";
-import { PrismaClient, status } from "../../generated/prisma/client";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { v4 as uuidv4 } from "uuid"
 import "dotenv/config";
+import prisma from "../config/prisma";
 
-
-const prisma = new PrismaClient({ 
-    errorFormat: "pretty", 
-})
 
 export const createClass = async (request: Request, response: Response) => {
     try {
@@ -66,10 +61,10 @@ export const classUpdate = async (request: Request, response: Response) => {
         
         const updateData = await prisma.classes.update({
             data: {
-                class_name: class_name || findClass.class_name,
-                class_program: class_program || findClass.class_program
+                class_name: class_name ?? findClass.class_name,
+                class_program: class_program ?? findClass.class_program
             },
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
 
         response.status(200).json({
@@ -95,7 +90,7 @@ export const getAllData = async (request: Request, response: Response) => {
 
         const allData = await prisma.classes.findMany({
             where: { 
-                class_name: { contains: search?.toString() }
+                class_name: { contains: search }
             }
         })
         response.status(200).json({
@@ -199,7 +194,7 @@ export const deleteClass = async (request: Request, response: Response) => {
         }
 
         const deleteData = await prisma.classes.delete({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
         response.status(200).json({
             status: true,

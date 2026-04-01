@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { PrismaClient, role } from "../../generated/prisma/client";
 import bcrypt from "bcrypt";
 import Jwt from "jsonwebtoken";
 import {
@@ -13,8 +12,7 @@ import {
     sendBulkUploadResponse,
     handleBulkUploadError,
 } from "../services/bulkUserUpload.service";
-
-const prisma = new PrismaClient({ errorFormat: "pretty" });
+import prisma from "../config/prisma";
 
 export const bulkCreateUsers = async (request: Request, response: Response): Promise<void> => {
     try {
@@ -143,7 +141,8 @@ export const getAllUser = async (request: Request, response: Response) => {
                 phone_number: true,
                 parent_full_name: true,
                 parent_phone_number: true,
-                class: true
+                class: true,
+                created_at: true
             }
         })
 
@@ -189,7 +188,8 @@ export const getById = async (request: Request, response: Response) => {
                 phone_number: true,
                 parent_full_name: true,
                 parent_phone_number: true,
-                class: true
+                class: true,
+                created_at: true
             }
         })
 
