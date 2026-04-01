@@ -152,21 +152,21 @@ export const updateAdmin = async (request: Request, response: Response) => {
         })
 
         if (findDuplicates) {
-            if (email && findDUplicates.email === email) {
+            if (email && findDuplicates.email === email) {
                 return response.status(409).json({
                     status: false,
                     message: `Email already used.`
                 })
             }
 
-            if (username && findDUplicates.username === username) {
+            if (username && findDuplicates.username === username) {
                 return response.status(409).json({
                     status: false,
                     message: `Username already used.`
                 })
             }
 
-            if (phone_number && findDUplicates.phone_number === phone_number) {
+            if (phone_number && findDuplicates.phone_number === phone_number) {
                 return response.status(409).json({
                     status: false,
                     message: `Phone number already used.`

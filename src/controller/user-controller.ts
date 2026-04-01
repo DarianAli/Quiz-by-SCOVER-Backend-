@@ -141,7 +141,8 @@ export const getAllUser = async (request: Request, response: Response) => {
                 phone_number: true,
                 parent_full_name: true,
                 parent_phone_number: true,
-                class: true
+                class: true,
+                created_at: true
             }
         })
 
@@ -187,7 +188,8 @@ export const getById = async (request: Request, response: Response) => {
                 phone_number: true,
                 parent_full_name: true,
                 parent_phone_number: true,
-                class: true
+                class: true,
+                created_at: true
             }
         })
 
