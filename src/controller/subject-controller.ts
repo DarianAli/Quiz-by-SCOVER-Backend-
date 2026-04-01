@@ -1,9 +1,7 @@
 import { Response, Request } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { PrismaClient } from "../../generated/prisma";
+import prisma from "../config/prisma";
 
-
-const prisma = new PrismaClient({ errorFormat: "pretty" })
 
 export const createSubject = async (request: Request, response: Response) => {
     try {
@@ -243,18 +241,11 @@ export const getAllSubject = async (request: Request, response: Response) => {
             }
         })
 
-        if (findSubject.length === 0) {
-            response.status(404).json({
-                status: false,
-                message: `Subject not found.`
-            })
-            return
-        }
 
         response.status(200).json({
             status: true,
             data: findSubject,
-            message: `Showing all data.`
+            message: findSubject.length > 0 ? `Showing all data.` : `No subject found.`
         })
         return
     } catch (error) {

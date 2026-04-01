@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
 import { BASE_URL } from "../../global";
 import fs from "fs";
+import prisma from "../config/prisma";
 
-const prisma = new PrismaClient({ errorFormat: "pretty" });
 
 export const createOption = async (request: Request, response: Response) => {
     try {
