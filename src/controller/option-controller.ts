@@ -15,7 +15,7 @@ export const createOption = async (request: Request, response: Response) => {
 
         const parsedQuestionId = Number(questionId);
 
-        if (Number.isNaN(parsedQuestionId) || Number.isNaN(parsedQuestionId)) {
+        if (Number.isNaN(parsedQuestionId)) {
             response.status(400).json({
                 success: false,
                 message: "questionId must be a number"
@@ -85,12 +85,11 @@ export const updateOption = async (request: Request, response: Response) => {
 
             let path  = `${BASE_URL}/public/option_image/${findOption.option_image}`
             let exists = fs.existsSync(path)
-
             if(exists && findOption.option_image !== ``) fs.unlinkSync(path)
         }
 
         const updatedOption = await prisma.options.update({
-            where: { idOption: Number(idOption) },
+            where: { idOption: id },
             data: {
                 option_text: option_text ?? findOption.option_text,
                 option_image: filename
@@ -173,6 +172,14 @@ export const getOptionById = async (request: Request, response: Response) => {
             }
         })
 
+        if (!findOption) {
+            response.status(404).json({
+                success: false,
+                message: "option not found"
+            })
+            return
+        }
+
         response.status(200).json({
             success: true,
             data: findOption,
@@ -220,7 +227,7 @@ export const deleteOption = async (request: Request, response: Response) => {
 
 
         const deletedOption = await prisma.options.delete({
-            where: { idOption: Number(idOption) }
+            where: { idOption: id }
         })
 
         response.status(200).json({
