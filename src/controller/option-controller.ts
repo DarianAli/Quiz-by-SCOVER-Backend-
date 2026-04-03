@@ -215,7 +215,7 @@ export const deleteOption = async (request: Request, response: Response) => {
             return
         }
 
-        let path = `${BASE_URL}/../public/option_image/${findOption.option_image}`
+        let path = `${BASE_URL}/public/option_image/${findOption.option_image}`
         let exists = fs.existsSync(path)
         if(exists && findOption.option_image !== ``) fs.unlinkSync(path)
 
