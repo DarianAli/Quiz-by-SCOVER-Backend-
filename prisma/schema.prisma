@@ -1,3 +1,9 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -5,179 +11,6 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
-}
-
-model admin {
-  idAdmin      Int      @id @default(autoincrement())
-  uuid         String   @unique @default("")
-  username     String   @default("")
-  password     String   @default("")
-  email        String   @default("")
-  role         role     @default(ADMIN)
-  phone_number String   @default("")
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-}
-
-model user {
-  idUser              Int       @id @default(autoincrement())
-  uuid                String    @unique @default("")
-  userName            String    @default("")
-  password            String    @default("")
-  full_name           String    @default("")
-  email               String    @default("")
-  role                role      @default(STUDENT)
-  classId             Int
-  phone_number        String    @default("")
-  parent_full_name    String    @default("")
-  parent_phone_number String    @default("")
-  photoProfile        String    @default("/public/user_image/user_profile.jpg")
-  created_at          DateTime  @default(now())
-  updated_at          DateTime  @updatedAt
-  
-
-  answers             answers[]
-  attempt             attempt[]
-  scores              scores[]
-  class               classes   @relation(fields: [classId], references: [idClass])
-
-  @@index([classId], map: "user_classId_fkey")
-}
-
-model classes {
-  idClass       Int            @id @default(autoincrement())
-  uuid          String         @unique @default("")
-  class_name    String         @default("")
-  class_program classProgram?
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
-  subjectclass  subjectclass[]
-  user          user[]
-}
-
-model subject {
-  idSubject    Int            @id @default(autoincrement())
-  uuid         String         @unique @default("")
-  subject_name String         @default("")
-  created_at   DateTime       @default(now())
-  updated_at   DateTime       @updatedAt
-  quiz         quiz[]
-  subjectclass subjectclass[]
-}
-
-model quiz {
-  idQuiz       Int         @id @default(autoincrement())
-  uuid         String      @unique @default("")
-  quiz_title   String      @default("")
-  quiz_date    DateTime    @default(now())
-  duration     Int         @default(0)
-  difficulty   difficulty  @default(EASY)
-  created_by   Int?
-  created_at   DateTime    @default(now())
-  updated_at   DateTime    @updatedAt
-  subjectId    Int?
-  status       status      @default(INCOMPLETED)
-  creator_role role?
-  answers      answers[]
-  attempt      attempt[]
-  questions    questions[]
-  subject      subject?    @relation(fields: [subjectId], references: [idSubject])
-  scores       scores[]
-
-  @@index([subjectId], map: "quiz_subjectId_fkey")
-}
-
-model attempt {
-  idAttempt     Int       @id @default(autoincrement())
-  userId        Int
-  quizId        Int
-  start_time    DateTime  @default(now())
-  finished_time DateTime?
-  isFinished    Boolean   @default(false)
-  created_at    DateTime  @default(now())
-  quiz          quiz      @relation(fields: [quizId], references: [idQuiz])
-  user          user      @relation(fields: [userId], references: [idUser])
-
-  @@unique([userId, quizId])
-  @@index([quizId], map: "attempt_quizId_fkey")
-}
-
-model scores {
-  idScore         Int      @id @default(autoincrement())
-  uuid            String   @unique @default("")
-  total_questions Int      @default(0)
-  corret          Int      @default(0)
-  wrong           Int      @default(0)
-  score           Int      @default(0)
-  start_time      DateTime
-  finished_time   DateTime
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  userId          Int
-  quizId          Int
-  quiz            quiz     @relation(fields: [quizId], references: [idQuiz])
-  user            user     @relation(fields: [userId], references: [idUser])
-
-  @@index([quizId], map: "scores_quizId_fkey")
-  @@index([userId], map: "scores_userId_fkey")
-}
-
-model answers {
-  idAnswers      Int       @id @default(autoincrement())
-  uuid           String    @unique @default("")
-  student_answer String    @default("")
-  answered_at    DateTime  @default(now())
-  quizId         Int
-  userId         Int
-  optionsId      Int
-  questionsId    Int
-  options        options   @relation(fields: [optionsId], references: [idOption])
-  questions      questions @relation(fields: [questionsId], references: [idQuestion])
-  quiz           quiz      @relation(fields: [quizId], references: [idQuiz])
-  user           user      @relation(fields: [userId], references: [idUser])
-
-  @@unique([userId, quizId, questionsId])
-  @@index([optionsId], map: "answers_optionsId_fkey")
-  @@index([questionsId], map: "answers_questionsId_fkey")
-  @@index([quizId], map: "answers_quizId_fkey")
-}
-
-model questions {
-  idQuestion     Int        @id @default(autoincrement())
-  uuid           String     @unique @default("")
-  question_text  String     @default("")
-  difficulty     difficulty @default(EASY)
-  poin           Int        @default(0)
-  quizId         Int
-  question_image String     @default("")
-  answers        answers[]
-  options        options[]
-  quiz           quiz       @relation(fields: [quizId], references: [idQuiz])
-
-  @@index([quizId], map: "questions_quizId_fkey")
-}
-
-model options {
-  uuid         String    @unique @default("")
-  option_text  String    @default("")
-  option_image String    @default("")
-  is_correct   Boolean   @default(false)
-  idOption     Int       @id @default(autoincrement())
-  questionsId  Int
-  answers      answers[]
-  questions    questions @relation(fields: [questionsId], references: [idQuestion])
-
-  @@index([questionsId], map: "options_questionsId_fkey")
-}
-
-model subjectclass {
-  subjectId Int
-  classId   Int
-  classes   classes @relation(fields: [classId], references: [idClass], map: "subjectClass_classId_fkey")
-  subject   subject @relation(fields: [subjectId], references: [idSubject], map: "subjectClass_subjectId_fkey")
-
-  @@id([subjectId, classId])
-  @@index([classId], map: "subjectClass_classId_fkey")
 }
 
 enum role {
@@ -200,4 +33,181 @@ enum difficulty {
   HARD
   MEDIUM
   EASY
+}
+
+model admin {
+  idAdmin         Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  username        String        @default("")
+  password        String        @default("")
+  email           String        @default("")
+  role            role          @default(ADMIN)
+  phone_number    String        @default("")
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+}
+
+model user {
+  idUser              Int       @id @default(autoincrement())
+  uuid                String    @unique @default("")
+  userName            String    @default("")
+  password            String    @default("")
+  full_name           String    @default("")
+  email               String    @default("")
+  role                role      @default(STUDENT)
+  class               classes   @relation(fields: [classId], references: [idClass])
+  classId             Int
+  phone_number        String    @default("")
+  parent_full_name    String    @default("")
+  parent_phone_number String    @default("")
+  photoProfile        String    @default("/public/user_image/user_profile.jpg")
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime? // soft delete
+
+  scores          scores[]
+  answers         answers[]
+  attempt         attempt[]
+}
+
+model classes {
+  idClass         Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  class_name      String        @default("")
+  class_program   classProgram?
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  user            user[]
+  subjectClass    subjectClass[]
+}
+
+model subject {
+  idSubject    Int           @id @default(autoincrement())
+  uuid         String        @unique @default("")
+  subjectClass subjectClass[]
+  subject_name String        @default("")
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+  deleted_at   DateTime?     // soft delete
+
+  quiz         quiz[]
+}
+
+model subjectClass {
+    subjectId Int
+    classId   Int
+
+    subject   subject @relation(fields: [subjectId], references: [idSubject], onDelete: Cascade)
+    class     classes @relation(fields: [classId],   references: [idClass],   onDelete: Cascade)
+
+    @@id([subjectId, classId])
+} 
+
+model quiz {
+  idQuiz          Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  quiz_title      String        @default("")
+  quiz_date       DateTime      @default(now())     
+  duration        Int           @default(0)  //minutes 
+  status          status        @default(INCOMPLETED)
+  difficulty      difficulty    @default(EASY)
+
+  created_by      Int?
+  creator_role    role?
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+  deleted_at      DateTime?     // soft delete
+
+  subject         subject?      @relation(fields: [subjectId], references: [idSubject], onDelete: SetNull)
+  subjectId       Int?
+
+  scores          scores[]
+  answers         answers[]
+  questions       questions[]
+  attempt         attempt[]
+}
+
+model attempt {
+  idAttempt       Int           @id @default(autoincrement())
+  userId          Int
+  quizId          Int
+
+  start_time      DateTime      @default(now())
+  finished_time   DateTime?
+  isFinished      Boolean       @default(false)     
+
+  user            user          @relation(fields: [userId], references: [idUser])
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz]) 
+
+  created_at      DateTime      @default(now())
+
+   @@unique([userId, quizId]) // prevent double start
+}
+
+model scores {
+  idScore         Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  total_questions Int           @default(0)
+  correct         Int           @default(0)
+  wrong           Int           @default(0)
+  score           Int           @default(0)
+  start_time      DateTime
+  finished_time   DateTime
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  user            user          @relation(fields: [userId], references: [idUser])
+  userId          Int
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+  quizId          Int
+}
+
+model answers {
+  idAnswers       Int           @id @default(autoincrement())
+  uuid            String        @unique @default("")
+  student_answer  String        @default("")
+  answered_at     DateTime      @default(now())
+
+
+  quizId          Int
+  userId          Int
+  questionsId     Int
+  optionsId       Int
+
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+  user            user          @relation(fields: [userId], references: [idUser])
+  questions       questions     @relation(fields: [questionsId], references: [idQuestion])
+  options         options       @relation(fields: [optionsId], references: [idOption])
+
+  @@unique([userId, quizId, questionsId])
+}
+
+model questions {
+  idQuestion     Int        @id @default(autoincrement())
+  uuid           String     @unique @default("")
+  question_text  String     @default("")
+  question_image String     @default("")
+  difficulty     difficulty @default(EASY)
+  poin           Int        @default(0)
+  deleted_at     DateTime?  // soft delete
+
+  quizId         Int
+  quiz           quiz       @relation(fields: [quizId], references: [idQuiz], onDelete: Cascade)
+
+  options        options[]
+  answers        answers[]
+}
+
+model options {
+  idOption    Int       @id @default(autoincrement())
+  uuid        String    @unique @default("")
+  option_text String    @default("")
+  option_image String   @default("")
+  is_correct  Boolean   @default(false)
+
+  answers     answers[]
+
+  questionsId Int
+  questions   questions @relation(fields: [questionsId], references: [idQuestion], onDelete: Cascade)
 }
