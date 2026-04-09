@@ -3,7 +3,8 @@ import { getAllQuiz, getQuizById, createQuiz, updateQuiz, deleteQuiz } from "../
 import { deleteLimiter, postLimiter, updateLimiter, attemptLimiter } from "../middleware/rateLimiter"
 import { startAttempt, submitAttempt, } from "../controller/attempt-controller"
 import { verifyAddQuiz, verifyEditQuiz } from "../middleware/quizValidation"
-import { verifyRole, verifyToken } from "../middleware/auth" 
+import { verifyRole, verifyToken } from "../middleware/auth"
+import answerRouter from "./answerRouter"
 
 const app = express();
 app.use(express.json())
@@ -16,5 +17,8 @@ app.delete('/delete/:idQuiz', deleteLimiter, [verifyToken, verifyRole(["ADMIN", 
 
 app.post('/:idQuiz/attempt/start', attemptLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]),], startAttempt)
 app.post('/:idQuiz/attempt/:idAttempt/submit', postLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]),], submitAttempt)
+
+// Answer tracking — bersarang di bawah /:idQuiz/answers
+app.use('/:idQuiz/answers', answerRouter)
 
 export default app

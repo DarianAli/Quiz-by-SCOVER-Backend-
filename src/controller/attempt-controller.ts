@@ -138,11 +138,56 @@ export const submitAttempt = async (request: Request, response: Response) => {
         const elapsed = now.getTime() - started.getTime()
         const late = elapsed > durationMs
 
+        // ── Hitung skor dari tabel answers ──────────────────────────────
+        const userAnswers = await prisma.answers.findMany({
+            where: { userId: user.idUser, quizId: attempt.quizId },
+            include: {
+                options:   { select: { is_correct: true } },
+                questions: { select: { poin: true } }
+            }
+        })
+
+        const allQuestions = await prisma.questions.findMany({
+            where: { quizId: attempt.quizId, deleted_at: null }
+        })
+
+        let correct = 0
+        let wrong   = 0
+        let score   = 0
+
+        for (const answer of userAnswers) {
+            if (answer.options.is_correct) {
+                correct++
+                score += answer.questions.poin
+            } else {
+                wrong++
+            }
+        }
+
+        const total_questions = allQuestions.length
+        // ────────────────────────────────────────────────────────────────
+
+        // Update attempt → selesai
         const attemptUpdated = await prisma.attempt.update ({
             where: { idAttempt: Number(idAttempt) },
             data: {
                 finished_time: now,
                 isFinished: true
+            }
+        })
+
+        // Simpan skor ke tabel scores
+        const savedScore = await prisma.scores.create({
+            data: {
+                uuid:            crypto.randomUUID(),
+                userId:          user.idUser,
+                quizId:          attempt.quizId,
+                total_questions,
+                correct,
+                wrong,
+                score,
+                start_time:      started,
+                finished_time:   now
             }
         })
 
@@ -152,6 +197,14 @@ export const submitAttempt = async (request: Request, response: Response) => {
             late,
             durationAllowed: attempt.quiz.duration,
             timeUsedMinutes: Math.floor(elapsed / 60000),
+            scoreResult: {
+                total_questions,
+                correct,
+                wrong,
+                unanswered: total_questions - userAnswers.length,
+                score,
+                idScore: savedScore.idScore
+            },
             data: attemptUpdated
         })
         return
@@ -165,4 +218,4 @@ export const submitAttempt = async (request: Request, response: Response) => {
         })
         return
     }
-}
+}

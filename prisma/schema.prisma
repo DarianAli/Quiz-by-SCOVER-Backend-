@@ -165,10 +165,6 @@ model scores {
 
 model answers {
   idAnswers       Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  student_answer  String        @default("")
-  answered_at     DateTime      @default(now())
-
 
   quizId          Int
   userId          Int
@@ -179,6 +175,9 @@ model answers {
   user            user          @relation(fields: [userId], references: [idUser])
   questions       questions     @relation(fields: [questionsId], references: [idQuestion])
   options         options       @relation(fields: [optionsId], references: [idOption])
+
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
 
   @@unique([userId, quizId, questionsId])
 }
