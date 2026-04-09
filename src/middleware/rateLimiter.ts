@@ -78,3 +78,15 @@ export const attemptLimiter = rateLimit({
         })
     }
 })
+
+// Jawaban soal — lebih longgar karena siswa bisa menjawab banyak soal berturut-turut
+export const answerLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 120, // max 120 jawaban/menit, lebih dari cukup untuk semua soal
+    handler: (request: Request, response: Response) =>{
+        response.status(429).json({
+            status: false,
+            message: "Too many answer submissions, slow down."
+        })
+    }
+})

@@ -1,9 +1,5 @@
 import path from "path"
-import { fileURLToPath } from "url"
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 
 export const BASE_URL = `${path.join(__dirname, "../")}`
 export const PORT = process.env.PORT
-export const SECRET = process.env.SECRET
+export const SECRET = process.env.SECRET
