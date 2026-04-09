@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -49,23 +48,26 @@ model admin {
 }
 
 model user {
-  idUser          Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  userName        String        @default("")
-  password        String        @default("")
-  full_name       String        @default("")
-  email           String        @default("")
-  role            role          @default(STUDENT)
-  class           classes       @relation(fields: [classId], references: [idClass])
-  classId         Int
-  phone_number    String        @default("")
-  parent_full_name  String      @default("")
+  idUser              Int       @id @default(autoincrement())
+  uuid                String    @unique @default("")
+  userName            String    @default("")
+  password            String    @default("")
+  full_name           String    @default("")
+  email               String    @default("")
+  role                role      @default(STUDENT)
+  class               classes   @relation(fields: [classId], references: [idClass])
+  classId             Int
+  phone_number        String    @default("")
+  parent_full_name    String    @default("")
   parent_phone_number String    @default("")
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  photoProfile        String    @default("/public/user_image/user_profile.jpg")
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime? // soft delete
 
   scores          scores[]
   answers         answers[]
+  attempt         attempt[]
 }
 
 model classes {
@@ -81,22 +83,23 @@ model classes {
 }
 
 model subject {
-  idSubject       Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  subjectClass    subjectClass[]
-  subject_name    String        @default("")
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  idSubject    Int           @id @default(autoincrement())
+  uuid         String        @unique @default("")
+  subjectClass subjectClass[]
+  subject_name String        @default("")
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+  deleted_at   DateTime?     // soft delete
 
-  quiz            quiz[]
+  quiz         quiz[]
 }
 
 model subjectClass {
-    subjectId     Int
-    classId       Int
+    subjectId Int
+    classId   Int
 
-    subject       subject       @relation(fields: [subjectId], references: [idSubject])
-    class         classes       @relation(fields: [classId], references: [idClass])
+    subject   subject @relation(fields: [subjectId], references: [idSubject], onDelete: Cascade)
+    class     classes @relation(fields: [classId],   references: [idClass],   onDelete: Cascade)
 
     @@id([subjectId, classId])
 } 
@@ -105,29 +108,48 @@ model quiz {
   idQuiz          Int           @id @default(autoincrement())
   uuid            String        @unique @default("")
   quiz_title      String        @default("")
-  quiz_date       DateTime      @default(now())
-  start_time      DateTime      
-  finished_time   DateTime      
-  duration        Int           @default(0)
+  quiz_date       DateTime      @default(now())     
+  duration        Int           @default(0)  //minutes 
   status          status        @default(INCOMPLETED)
   difficulty      difficulty    @default(EASY)
-  created_by      Int           @default(0)
+
+  created_by      Int?
+  creator_role    role?
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt
+  deleted_at      DateTime?     // soft delete
 
-  subject         subject       @relation(fields: [subjectId], references: [idSubject])
-  subjectId       Int
+  subject         subject?      @relation(fields: [subjectId], references: [idSubject], onDelete: SetNull)
+  subjectId       Int?
 
   scores          scores[]
   answers         answers[]
   questions       questions[]
+  attempt         attempt[]
+}
+
+model attempt {
+  idAttempt       Int           @id @default(autoincrement())
+  userId          Int
+  quizId          Int
+
+  start_time      DateTime      @default(now())
+  finished_time   DateTime?
+  isFinished      Boolean       @default(false)     
+
+  user            user          @relation(fields: [userId], references: [idUser])
+  quiz            quiz          @relation(fields: [quizId], references: [idQuiz]) 
+
+  created_at      DateTime      @default(now())
+
+   @@unique([userId, quizId]) // prevent double start
 }
 
 model scores {
   idScore         Int           @id @default(autoincrement())
   uuid            String        @unique @default("")
   total_questions Int           @default(0)
-  corret          Int           @default(0)
+  correct         Int           @default(0)
   wrong           Int           @default(0)
   score           Int           @default(0)
   start_time      DateTime
@@ -143,31 +165,48 @@ model scores {
 
 model answers {
   idAnswers       Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  student_answer  String        @default("")
-  is_Correct      Boolean       @default(false)
-  answered_at     DateTime      @default(now())
 
   quizId          Int
   userId          Int
+  questionsId     Int
+  optionsId       Int
 
   quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
   user            user          @relation(fields: [userId], references: [idUser])
+  questions       questions     @relation(fields: [questionsId], references: [idQuestion])
+  options         options       @relation(fields: [optionsId], references: [idOption])
+
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  @@unique([userId, quizId, questionsId])
 }
 
 model questions {
-  idQuestion      Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  question_text   String        @default("")
-  questions_image String        @default("")
-  option_a        String        @default("")
-  option_b        String        @default("")
-  option_c        String        @default("")
-  option_d        String        @default("")
-  correct_answers String        @default("")
-  difficulty      difficulty    @default(EASY)
-  poin            Int           @default(0)
+  idQuestion     Int        @id @default(autoincrement())
+  uuid           String     @unique @default("")
+  question_text  String     @default("")
+  question_image String     @default("")
+  difficulty     difficulty @default(EASY)
+  poin           Int        @default(0)
+  deleted_at     DateTime?  // soft delete
 
-  quizId          Int
-  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
+  quizId         Int
+  quiz           quiz       @relation(fields: [quizId], references: [idQuiz], onDelete: Cascade)
+
+  options        options[]
+  answers        answers[]
+}
+
+model options {
+  idOption    Int       @id @default(autoincrement())
+  uuid        String    @unique @default("")
+  option_text String    @default("")
+  option_image String   @default("")
+  is_correct  Boolean   @default(false)
+
+  answers     answers[]
+
+  questionsId Int
+  questions   questions @relation(fields: [questionsId], references: [idQuestion], onDelete: Cascade)
 }

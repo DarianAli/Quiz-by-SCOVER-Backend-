@@ -1,13 +1,8 @@
 import { Request, Response } from "express";
-import { PrismaClient, status } from "../../generated/prisma/client";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { v4 as uuidv4 } from "uuid"
 import "dotenv/config";
+import prisma from "../config/prisma";
 
-
-const prisma = new PrismaClient({ 
-    errorFormat: "pretty", 
-})
 
 export const createClass = async (request: Request, response: Response) => {
     try {
@@ -42,24 +37,18 @@ export const classUpdate = async (request: Request, response: Response) => {
     try {
         const { idClass } = request.params;
         const { class_name, class_program } = request.body;
+        const id = Number(idClass)
 
-        if (!idClass) {
+        if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
-                message: `idClass is required.`
+                message: `ID must be a number.`
             })
             return
         }
 
-        if (Number.isNaN(idClass)) {
-            response.status(400).json({
-                status: false,
-                message: `ID muss be a number.`
-            })
-        }
-
         const findClass = await prisma.classes.findFirst({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
 
         if (!findClass) {
@@ -72,10 +61,10 @@ export const classUpdate = async (request: Request, response: Response) => {
         
         const updateData = await prisma.classes.update({
             data: {
-                class_name: class_name || findClass.class_name,
-                class_program: class_program || findClass.class_program
+                class_name: class_name ?? findClass.class_name,
+                class_program: class_program ?? findClass.class_program
             },
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
 
         response.status(200).json({
@@ -101,7 +90,7 @@ export const getAllData = async (request: Request, response: Response) => {
 
         const allData = await prisma.classes.findMany({
             where: { 
-                class_name: { contains: search?.toString() }
+                class_name: { contains: search }
             }
         })
         response.status(200).json({
@@ -137,7 +126,7 @@ export const getById = async (request: Request, response: Response) => {
         if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
-                message: `ID muss be a number.`
+                message: `ID must be a number.`
             })
             return
         }
@@ -173,6 +162,7 @@ export const getById = async (request: Request, response: Response) => {
 export const deleteClass = async (request: Request, response: Response) => {
     try {
         const { idClass } = request.params;
+        const id = Number(idClass)
 
         if (!idClass) {
             response.status(400).json({
@@ -182,15 +172,17 @@ export const deleteClass = async (request: Request, response: Response) => {
             return
         }
 
-        if (Number.isNaN(idClass)) {
+        if (Number.isNaN(id)) {
             response.status(400).json({
                 status: false,
                 message: `ID must be a number.`
             })
+            return
         }
 
+
         const findClass = await prisma.classes.findUnique({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
         
         if (!findClass) {
@@ -202,7 +194,7 @@ export const deleteClass = async (request: Request, response: Response) => {
         }
 
         const deleteData = await prisma.classes.delete({
-            where: { idClass: Number(idClass) }
+            where: { idClass: id }
         })
         response.status(200).json({
             status: true,
