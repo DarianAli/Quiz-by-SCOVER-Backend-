@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { BASE_URL } from "../../global";
+import { BASE_URL } from "../global";
 import fs from "fs";
 import prisma from "../config/prisma";
 

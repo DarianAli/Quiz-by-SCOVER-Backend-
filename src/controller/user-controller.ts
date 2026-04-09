@@ -13,6 +13,9 @@ import {
     handleBulkUploadError,
 } from "../services/bulkUserUpload.service";
 import prisma from "../config/prisma";
+import { BASE_URL } from "../global";
+import fs from "fs"
+
 
 export const bulkCreateUsers = async (request: Request, response: Response): Promise<void> => {
     try {
@@ -139,6 +142,7 @@ export const getAllUser = async (request: Request, response: Response) => {
                 full_name: true,
                 role: true,
                 phone_number: true,
+                photoProfile: true,
                 parent_full_name: true,
                 parent_phone_number: true,
                 class: true,
@@ -186,6 +190,7 @@ export const getById = async (request: Request, response: Response) => {
                 full_name: true,
                 role: true,
                 phone_number: true,
+                photoProfile: true,
                 parent_full_name: true,
                 parent_phone_number: true,
                 class: true,
@@ -317,6 +322,79 @@ export const updateUser = async (request: Request, response: Response) => {
                 parent_full_name: true,
                 parent_phone_number: true,
                 class: true
+            },
+            where: { idUser: Number(idUser) }
+        })
+
+        response.status(200).json({
+            status: true,
+            data: updateData,
+            message: `Successfully update data.`
+        })
+        return
+    } catch (error) {
+        console.error(error)
+
+        response.status(500).json({
+            status: false,
+            message: `Internal server error.`
+        })
+        return
+    }
+}
+
+export const updatePicture = async (request: Request, response: Response) => {
+    try {
+        const { idUser } = request.params;
+        const { photoProfile } = request.body;
+        const id = Number(idUser)
+
+        if (Number.isNaN(id)) {
+            response.status(400).json({
+                status: false,
+                message: `ID must be a number.`
+            })
+            return
+        }
+
+        const findUser = await prisma.user.findUnique({
+            where: {
+                idUser: id
+            }
+        })
+
+        if (!findUser) {
+            response.status(404).json({
+                status: false,
+                message: `User not found.`
+            })
+            return
+        }
+
+        let filename = findUser.photoProfile
+        if (request.file) {
+            filename = request.file.filename
+
+            let path  = `${BASE_URL}/public/user_image/${findUser.photoProfile}`
+            let exists = fs.existsSync(path)
+            if(exists && findUser.photoProfile !== ``) fs.unlinkSync(path)
+        }
+
+        const updateData = await prisma.user.update({
+            data: {
+                photoProfile: filename
+            },
+            select: {
+                uuid: true,
+                userName: true,
+                email: true,
+                full_name: true,
+                role: true,
+                phone_number: true,
+                parent_full_name: true,
+                parent_phone_number: true,
+                class: true,
+                photoProfile: true
             },
             where: { idUser: Number(idUser) }
         })
@@ -500,6 +578,10 @@ export const deleteUser = async( request: Request, response: Response ) => {
             })
             return
         }
+
+        let path = `${BASE_URL}/public/user_image/${findUser.photoProfile}`
+        let exists = fs.existsSync(path)
+        if (exists && findUser.photoProfile !== ``) fs.unlinkSync(path)
 
         const deletedData = await prisma.user.delete({
             where: {

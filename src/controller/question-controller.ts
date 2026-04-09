@@ -1,5 +1,7 @@
 import { Response, Request } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { BASE_URL } from "../global";
+import fs from "fs"
 import prisma from "../config/prisma";
 
 
@@ -7,6 +9,9 @@ export const createQuestion = async (request: Request, response: Response) => {
     try {
         const { question_text, question_image, difficulty, poin, quizId } = request.body;
         const uuid = uuidv4()
+
+        let filename = ""
+        if (request.file) filename = request.file.filename
 
         const parsedQuizId = Number(quizId);
         const parsedPoin = Number(poin);
@@ -24,7 +29,7 @@ export const createQuestion = async (request: Request, response: Response) => {
             data: {
                 uuid,
                 question_text,
-                question_image,
+                question_image: filename,
                 difficulty,
                 poin: parsedPoin,
                 quizId: parsedQuizId
@@ -87,18 +92,27 @@ export const updateQuestion = async (request: Request, response: Response) => {
             return;
         }
 
+        let filename = findQuestion.question_image
+        if (request.file) {
+            filename = request.file.filename
+
+            let path = `${BASE_URL}/public/question_image/${findQuestion.question_image}`
+            let exists = fs.existsSync(path)
+            if(exists && findQuestion.question_image !== ``) fs.unlinkSync(path)
+        }
+
         const updatedQuestion = await prisma.questions.update({
             where: { idQuestion: Number(idQuestion) },
             data: {
                 question_text: question_text ?? findQuestion.question_text,
-                question_image: question_image ?? findQuestion.question_image,
+                question_image: filename,
                 difficulty: difficulty ?? findQuestion.difficulty,
                 poin: parsedPoin ?? findQuestion.poin,
             }
         })
 
         response.status(200).json({
-            status: true,
+            success: true,
             data: updatedQuestion,
             message: "question updated successfully"
         })
@@ -107,7 +121,7 @@ export const updateQuestion = async (request: Request, response: Response) => {
     }   catch (error) {
         console.error(error)
         response.status(500).json({
-            status: false,
+            success: false,
             message: `failed to update question.`
         })
         return
@@ -227,6 +241,10 @@ export const deleteQuestion = async (request: Request, response: Response) => {
             })
             return
         }
+
+        let path = `${BASE_URL}/public/question_image/${findQuestion.question_image}`
+        let exists = fs.existsSync(path)
+        if(exists && findQuestion.question_image !== ``) fs.unlinkSync(path)
 
         const deletedQuestion = await prisma.questions.delete({
             where: { idQuestion: Number(idQuestion) }

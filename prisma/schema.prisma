@@ -60,6 +60,7 @@ model user {
   phone_number        String    @default("")
   parent_full_name    String    @default("")
   parent_phone_number String    @default("")
+  photoProfile        String    @default("/public/user_image/user_profile.jpg")
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
   deleted_at          DateTime? // soft delete

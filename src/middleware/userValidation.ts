@@ -54,6 +54,23 @@ export const authSchema = Joi.object({
     user: Joi.optional()
 })
 
+export const updateProfileSchema = Joi.object({
+    photoProfile: Joi.string().uri().optional(),
+})
+
+export const profileData = (request: Request, response: Response, next: NextFunction) => {
+    const { error } = updateProfileSchema.validate(request.body, { abortEarly: false })
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            message: error.details.map(it => it.message).join()
+        })
+        return
+    }
+    return next()
+}
+
 export const verifyLogin = ( request: Request, response: Response, next: NextFunction ) => {
     const { error } = authSchema.validate(request.body, { abortEarly: false })
 

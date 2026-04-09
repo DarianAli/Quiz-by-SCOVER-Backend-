@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { SECRET } from "../../global";
 import Jwt from "jsonwebtoken";
 
 interface JwPayLoad {
@@ -22,6 +21,7 @@ export const verifyToken = ( request: Request, response: Response, next: NextFun
         return
     }
 
+    const SECRET = process.env.SECRET
     if (!SECRET) {
         console.error("JWT SECRET is not configured")
         response.status(500).json({
