@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { role } from "../../generated/prisma/client";
+import { role } from "@prisma/client";
 import { parseExcelBuffer } from "../service/excel.parser";
 import { UserRow, validateUserRow } from "../utils/userRow.validator";
 import { UploadError, UserInsertPayload, ValidatedRow } from "../types/user.types";
@@ -214,7 +214,7 @@ export async function checkDatabaseConflicts(
 /**
  * Transforms ValidatedRows into fully-shaped UserInsertPayloads.
  * Passwords are generated via UserService.generateInitialPassword.
- * Rows with invalid roles are moved to uploadErrors.
+ * Rows with invalid es are moved to uploadErrors.
  */
 export async function prepareUsersForInsert(
     rows:         ValidatedRow[],

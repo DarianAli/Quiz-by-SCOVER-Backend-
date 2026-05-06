@@ -17,7 +17,7 @@ const PORT: number = 9000
 const app = express()
 app.use(cors())
 app.use(express.urlencoded({ extended: true }))
-app.use(globalLimiter)
+// app.use(globalLimiter)
 
 app.use("/user", userRoute)
 app.use("/class", classRoute)

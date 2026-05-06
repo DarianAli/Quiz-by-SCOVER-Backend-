@@ -25,7 +25,7 @@ const handleUpload = (req: Request, res: Response, next: NextFunction) => {
     });
 };
 
-app.post("/register", registerLimiter, [ addData, phoneValidation(["phone_number", "parent_phone_number"])], createUser)
+app.post("/register",  [ addData, phoneValidation(["phone_number", "parent_phone_number"])], createUser)
 app.post("/login", registerLimiter, [verifyLogin], auth)
 app.post("/bulk-upload", postLimiter, [verifyToken, verifyRole(["ADMIN"]), handleUpload], bulkCreateUsers)
 app.get("/getAll", [verifyToken, verifyRole(["ADMIN"])], getAllUser)
