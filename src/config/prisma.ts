@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 // ─── Models subject to soft-delete ───────────────────────────────────────────
+// Sesuaikan dengan nama model di schema (@@map names tidak dipakai di Prisma client)
 const SOFT_DELETE_MODELS = ["user", "subject", "quiz", "questions"] as const;
 type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];
 
@@ -9,17 +10,13 @@ function isSoft(model: string): model is SoftDeleteModel {
 }
 
 // ─── Raw (unextended) client ──────────────────────────────────────────────────
-// Kept as a reference so delete→update and findUnique→findFirst redirects
-// call through the raw client and don't trigger the extension recursively.
 const rawClient = new PrismaClient({ errorFormat: "pretty" });
 
-// ─── Extended client with soft-delete query interception ─────────────────────
+// ─── Extended client dengan soft-delete query interception ───────────────────
 const prisma = rawClient.$extends({
     query: {
         $allModels: {
-            // ── READ: exclude soft-deleted rows ──────────────────────────
-            // We cast through `any` at the assignment site to satisfy
-            // Prisma 6's union where-type + exactOptionalPropertyTypes.
+            // ── READ: exclude soft-deleted rows ──────────────────────────────
             async findFirst({ model, args, query }) {
                 if (isSoft(model)) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,9 +41,7 @@ const prisma = rawClient.$extends({
                 return query(args);
             },
 
-            // findUnique only accepts unique-column filters in its where clause,
-            // so we redirect to findFirst on the rawClient and apply the filter
-            // manually (bypassing the extension to avoid recursion).
+            // findUnique redirect ke findFirst agar soft-delete filter bisa diterapkan
             async findUnique({ model, args, query }) {
                 if (isSoft(model)) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +53,7 @@ const prisma = rawClient.$extends({
                 return query(args);
             },
 
-            // ── WRITE: soft-delete instead of hard-delete ─────────────────
+            // ── WRITE: soft-delete instead of hard-delete ─────────────────────
             async delete({ model, args, query }) {
                 if (isSoft(model)) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any

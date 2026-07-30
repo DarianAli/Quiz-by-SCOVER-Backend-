@@ -3,246 +3,164 @@ import { v4 as uuidv4 } from "uuid";
 import { BASE_URL } from "../global";
 import fs from "fs";
 import prisma from "../config/prisma";
+import { ok, created, badRequest, notFound, serverError } from "../utils/response.util";
 
-
-export const createOption = async (request: Request, response: Response) => {
+// ─── POST /option/add ────────────────────────────────────────────────────────
+export const createOption = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { option_text, option_image, questionId } = request.body;
-        const uuid = uuidv4();
+        const { option_text, questionId, is_correct, order_index } = request.body;
 
         let filename = "";
         if (request.file) filename = request.file.filename;
 
         const parsedQuestionId = Number(questionId);
 
-        if (Number.isNaN(parsedQuestionId)) {
-            response.status(400).json({
-                success: false,
-                message: "questionId must be a number"
-            })
-            return
+        if (isNaN(parsedQuestionId)) {
+            badRequest(response, "questionId must be a number.");
+            return;
         }
 
         const newOption = await prisma.options.create({
             data: {
-                uuid,
+                uuid: uuidv4(),
                 option_text,
                 option_image: filename,
-                is_correct: false,
-                questionsId: parsedQuestionId
+                is_correct: is_correct === "true" || is_correct === true,
+                order_index: order_index ? Number(order_index) : 0,
+                questionsId: parsedQuestionId,
             },
             include: {
-                answers: true,
-                questions: true
+                questions: { select: { uuid: true, question_text: true } }
             }
-        })
-        response.status(201).json({
-            success: true,
-            data: newOption,
-            message: "option created successfully"
-        })
-        return
-    }
-    catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to create option"
-        })
-        return
-    }
-}
+        });
 
-export const updateOption = async (request: Request, response: Response) => {
+        created(response, "Option created successfully.", newOption);
+    } catch (error) {
+        console.error("[createOption]", error);
+        serverError(response);
+    }
+};
+
+// ─── PUT /option/update/:uuid ────────────────────────────────────────────────
+export const updateOption = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idOption } = request.params;
-        const { option_text, option_image,  } = request.body;
-        const id = Number(idOption)
+        const { option_text, is_correct, order_index } = request.body;
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id must be a number"
-            })
-            return
+        let findOption;
+        if (!isNaN(Number(idOption))) {
+            findOption = await prisma.options.findFirst({ where: { id: Number(idOption) } });
+        } else {
+            findOption = await prisma.options.findFirst({ where: { uuid: String(idOption) } });
         }
-
-        const findOption = await prisma.options.findFirst({
-            where: { idOption: id }
-        })
 
         if (!findOption) {
-            response.status(404).json({
-                success: false,
-                message: "option not found"
-            })
-            return
+            notFound(response, "Option not found.");
+            return;
         }
 
-        let filename = findOption.option_image
+        let filename = findOption.option_image;
         if (request.file) {
-            filename = request.file.filename
+            filename = request.file.filename;
 
-            let path  = `${BASE_URL}/public/option_image/${findOption.option_image}`
-            let exists = fs.existsSync(path)
-            if(exists && findOption.option_image !== ``) fs.unlinkSync(path)
+            const path = `${BASE_URL}/public/option_image/${findOption.option_image}`;
+            if (fs.existsSync(path) && findOption.option_image !== "") {
+                fs.unlinkSync(path);
+            }
         }
 
         const updatedOption = await prisma.options.update({
-            where: { idOption: id },
+            where: { id: findOption.id },
             data: {
                 option_text: option_text ?? findOption.option_text,
-                option_image: filename
+                option_image: filename,
+                is_correct: is_correct !== undefined ? (is_correct === "true" || is_correct === true) : findOption.is_correct,
+                order_index: order_index !== undefined ? Number(order_index) : findOption.order_index,
             },
             include: {
-                answers: true,
-                questions: true
+                questions: { select: { uuid: true, question_text: true } }
             }
-        })
-        response.status(200).json({
-            success: true,
-            data: updatedOption,
-            message: "option updated successfully"
-        })
-        return
-    } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to update option"
-        })
-        return
-    }
-}
+        });
 
-export const getAllOption = async (request: Request, response: Response) => {
+        ok(response, "Option updated successfully.", updatedOption);
+    } catch (error) {
+        console.error("[updateOption]", error);
+        serverError(response);
+    }
+};
+
+// ─── GET /option/all ─────────────────────────────────────────────────────────
+export const getAllOption = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { search } = request.query;
+        const { search = "" } = request.query;
 
-        const getAllOption = await prisma.options.findMany({
-            where: { option_text: { contains: search?.toString() || "" } },
+        const optionsList = await prisma.options.findMany({
+            where: { option_text: { contains: String(search) } },
             include: {
-                answers: true,
-                questions: true
+                questions: { select: { uuid: true, question_text: true } }
             }
-        })
+        });
 
-        response.status(200).json({
-            success: true,
-            data: getAllOption,
-            message: "All option found successfully"
-        })
-        return
+        ok(response, "All options found successfully.", optionsList);
     } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to fetch all option"
-        })
-        return
+        console.error("[getAllOption]", error);
+        serverError(response);
     }
-}
+};
 
-export const getOptionById = async (request: Request, response: Response) => {
-    try {
-        const idOption = request.params.idOption;
-        const id = Number(idOption)
-
-        if (!idOption) {
-                response.status(400).json({
-                success: false,
-                message: "id Option is required"
-            })
-            return
-        }
-
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id must be a number"
-            })
-            return
-        }
-
-        const findOption = await prisma.options.findFirst({
-            where: { idOption: id },
-            include: {
-                answers: true,
-                questions: true
-            }
-        })
-
-        if (!findOption) {
-            response.status(404).json({
-                success: false,
-                message: "option not found"
-            })
-            return
-        }
-
-        response.status(200).json({
-            success: true,
-            data: findOption,
-            message: "option found successfully"
-        })
-        return
-    } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to fetch option"
-        })
-        return
-    }
-}
-
-export const deleteOption = async (request: Request, response: Response) => {
+// ─── GET /option/:uuid ───────────────────────────────────────────────────────
+export const getOptionById = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idOption } = request.params;
-        const id = Number(idOption)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id must be a number"
-            })
-            return
+        let findOption;
+        if (!isNaN(Number(idOption))) {
+            findOption = await prisma.options.findFirst({ where: { id: Number(idOption) } });
+        } else {
+            findOption = await prisma.options.findFirst({ where: { uuid: String(idOption) } });
         }
-
-        const findOption = await prisma.options.findFirst({
-            where: { idOption: id }
-        })
 
         if (!findOption) {
-            response.status(404).json({
-                success: false,
-                message: "option not found"
-            })
-            return
+            notFound(response, "Option not found.");
+            return;
         }
 
-        let path = `${BASE_URL}/public/option_image/${findOption.option_image}`
-        let exists = fs.existsSync(path)
-        if(exists && findOption.option_image !== ``) fs.unlinkSync(path)
+        ok(response, "Option found successfully.", findOption);
+    } catch (error) {
+        console.error("[getOptionById]", error);
+        serverError(response);
+    }
+};
 
+// ─── DELETE /option/delete/:uuid ─────────────────────────────────────────────
+export const deleteOption = async (request: Request, response: Response): Promise<void> => {
+    try {
+        const { idOption } = request.params;
+
+        let findOption;
+        if (!isNaN(Number(idOption))) {
+            findOption = await prisma.options.findFirst({ where: { id: Number(idOption) } });
+        } else {
+            findOption = await prisma.options.findFirst({ where: { uuid: String(idOption) } });
+        }
+
+        if (!findOption) {
+            notFound(response, "Option not found.");
+            return;
+        }
+
+        const path = `${BASE_URL}/public/option_image/${findOption.option_image}`;
+        if (fs.existsSync(path) && findOption.option_image !== "") {
+            fs.unlinkSync(path);
+        }
 
         const deletedOption = await prisma.options.delete({
-            where: { idOption: id }
-        })
+            where: { id: findOption.id },
+        });
 
-        response.status(200).json({
-            success: true,
-            data: deletedOption,
-            message: "option deleted successfully"
-        })
-        return
-
+        ok(response, "Option deleted successfully.", deletedOption);
     } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to delete option"
-        })
-        return
+        console.error("[deleteOption]", error);
+        serverError(response);
     }
-}
+};

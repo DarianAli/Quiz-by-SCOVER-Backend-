@@ -1,7 +1,11 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcrypt";
-import Jwt from "jsonwebtoken";
+import fs from "fs";
+import prisma from "../config/prisma";
+import { BASE_URL } from "../global";
+import { ok, created, badRequest, notFound, conflict, forbidden, serverError } from "../utils/response.util";
+import { getPagination, buildMeta } from "../utils/pagination.util";
 import {
     parseAndValidateFile,
     validateRows,
@@ -12,11 +16,8 @@ import {
     sendBulkUploadResponse,
     handleBulkUploadError,
 } from "../services/bulkUserUpload.service";
-import prisma from "../config/prisma";
-import { BASE_URL } from "../global";
-import fs from "fs"
 
-
+// ─── POST /user/bulk-upload ──────────────────────────────────────────────────
 export const bulkCreateUsers = async (request: Request, response: Response): Promise<void> => {
     try {
         const rows                        = await parseAndValidateFile(request.file);
@@ -31,71 +32,57 @@ export const bulkCreateUsers = async (request: Request, response: Response): Pro
     }
 };
 
-export const createUser = async (request: Request, response: Response) => {
+// ─── POST /user/add ──────────────────────────────────────────────────────────
+export const createUser = async (request: Request, response: Response): Promise<void> => {
     try {
         const { userName, email, password, full_name, role, phone_number, parent_full_name, parent_phone_number, classId } = request.body;
-        const uuid = uuidv4()
-        const hashed = await bcrypt.hash(password, 10)
 
-
-        const findClass = await prisma.classes.findUnique({
-            where: { idClass: Number(classId) }
-        })
-
-        if (!findClass) {
-            response.status(404).json({
-                status: false,
-                message: "Class not found."
-            })
-            return
+        if (!userName || !email || !password || !role) {
+            badRequest(response, "Username, email, password, and role are required.");
+            return;
         }
+
+        if (classId) {
+            const findClass = await prisma.classes.findFirst({ where: { id: Number(classId) } });
+            if (!findClass) { notFound(response, "Class not found."); return; }
+        }
+
         const existingUser = await prisma.user.findFirst({
             where: {
                 OR: [
-                    {email},
-                    {userName},
-                    {phone_number}
+                    { email },
+                    { userName },
+                    { phone_number: phone_number || "---" }
                 ]
             }
-        })
-
+        });
         const existingAdmin = await prisma.admin.findFirst({
             where: {
                 OR: [
-                    {email},
-                    {phone_number}
+                    { email },
+                    { phone_number: phone_number || "---" }
                 ]
             }
-        })
+        });
 
-        if (existingUser) {
-            response.status(409).json({
-                status: false,
-                message: `User with this email, username or phone number already exists.`
-            })
-            return
+        if (existingUser || existingAdmin) {
+            conflict(response, "User with this email, username, or phone number already exists.");
+            return;
         }
 
-        if (existingAdmin) {
-            response.status(409).json({
-                status: false,
-                message: `User with this email, username or phone number already exists.`            
-            })
-            return
-        }
-
+        const hashed = await bcrypt.hash(password, 10);
         const newUser = await prisma.user.create({
             data: {
-                uuid,
+                uuid: uuidv4(),
                 userName,
                 email,
                 password: hashed,
                 full_name,
                 role,
-                phone_number,
+                phone_number: phone_number || "",
                 parent_full_name,
                 parent_phone_number,
-                classId: Number(classId)
+                classId: classId ? Number(classId) : null,
             },
             select: {
                 uuid: true,
@@ -104,204 +91,138 @@ export const createUser = async (request: Request, response: Response) => {
                 full_name: true,
                 role: true,
                 phone_number: true,
-                parent_full_name: true,
-                parent_phone_number: true,
-                classId: true
-            },
-        })
-        response.status(201).json({
-            status: true,
-            data: newUser,
-            message: `Successfully create a user.`
-        })
-        return
-    } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Theres a problem when trying to create a user. Internal server error.`
-        })
-        return
-    }
-}
-
-export const getAllUser = async (request: Request, response: Response) => {
-    try {
-        const search = request.query.search?.toString() ?? "";
-
-        const allData = await prisma.user.findMany({
-            where: { 
-                userName: { contains: search?.toString() }
-            },
-            select: {
-                idUser: true,
-                uuid: true,
-                userName: true,
-                email: true,
-                full_name: true,
-                role: true,
-                phone_number: true,
-                photoProfile: true,
-                parent_full_name: true,
-                parent_phone_number: true,
-                class: true,
-                created_at: true
+                class: true
             }
-        })
+        });
 
-        response.status(200).json({
-            status: true,
-            data: allData,
-            message: `Show all data.`
-        })
-        return
+        created(response, "Successfully created a user.", newUser);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[createUser]", error);
+        serverError(response);
     }
-}
+};
 
-export const getById = async (request: Request, response: Response) => {
+// ─── GET /user/all ───────────────────────────────────────────────────────────
+export const getAllUser = async (request: Request, response: Response): Promise<void> => {
+    try {
+        const { search = "", role } = request.query;
+        const { skip, take, page, limit } = getPagination(request.query);
+
+        const where: any = {
+            OR: [
+                { userName: { contains: String(search) } },
+                { full_name: { contains: String(search) } }
+            ]
+        };
+        if (role) where.role = String(role).toUpperCase();
+
+        const [total, users] = await Promise.all([
+            prisma.user.count({ where }),
+            prisma.user.findMany({
+                where,
+                skip,
+                take,
+                orderBy: { id: "asc" },
+                select: {
+                    id: true,
+                    uuid: true,
+                    userName: true,
+                    email: true,
+                    full_name: true,
+                    role: true,
+                    phone_number: true,
+                    photoProfile: true,
+                    parent_full_name: true,
+                    parent_phone_number: true,
+                    class: true,
+                    created_at: true
+                }
+            })
+        ]);
+
+        ok(response, "Showing all user data.", users, buildMeta(total, page, limit));
+    } catch (error) {
+        console.error("[getAllUser]", error);
+        serverError(response);
+    }
+};
+
+// ─── GET /user/:uuid ─────────────────────────────────────────────────────────
+export const getById = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idUser } = request.params;
-        const id = Number(idUser)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        let findUser;
+        if (!isNaN(Number(idUser))) {
+            findUser = await prisma.user.findFirst({ where: { id: Number(idUser) }, include: { class: true } });
+        } else {
+            findUser = await prisma.user.findFirst({ where: { uuid: String(idUser) }, include: { class: true } });
         }
 
-        const findUser = await prisma.user.findUnique({
-            where: { idUser: id },
-            select: {
-                idUser: true,
-                uuid: true,
-                userName: true,
-                email: true,
-                full_name: true,
-                role: true,
-                phone_number: true,
-                photoProfile: true,
-                parent_full_name: true,
-                parent_phone_number: true,
-                class: true,
-                created_at: true
-            }
-        })
+        if (!findUser) { notFound(response, "User not found."); return; }
 
-        if (!findUser) {
-            response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-            return
-        }
-
-        response.status(200).json({
-            status: true,
-            data: findUser,
-            message: `Show user by ID.`
-        })
-        return
+        ok(response, "Show user by ID.", {
+            id: findUser.id,
+            uuid: findUser.uuid,
+            userName: findUser.userName,
+            email: findUser.email,
+            full_name: findUser.full_name,
+            role: findUser.role,
+            phone_number: findUser.phone_number,
+            photoProfile: findUser.photoProfile,
+            parent_full_name: findUser.parent_full_name,
+            parent_phone_number: findUser.parent_phone_number,
+            class: findUser.class,
+            created_at: findUser.created_at
+        });
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[getById]", error);
+        serverError(response);
     }
-}
+};
 
-export const updateUser = async (request: Request, response: Response) => {
+// ─── PUT /user/update/:uuid ──────────────────────────────────────────────────
+export const updateUser = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idUser } = request.params;
         const { userName, email, full_name, role, phone_number, parent_full_name, parent_phone_number, classId } = request.body;
-        const id = Number(idUser)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        let findUser;
+        if (!isNaN(Number(idUser))) {
+            findUser = await prisma.user.findFirst({ where: { id: Number(idUser) } });
+        } else {
+            findUser = await prisma.user.findFirst({ where: { uuid: String(idUser) } });
         }
+
+        if (!findUser) { notFound(response, "User not found."); return; }
 
         const requester = request.user;
-
-        if (requester?.role !== "ADMIN" && requester?.idUser !== id) {
-            return response.status(403).json({
-                status: false,
-                message: "Forbidden: You can only edit your own account."
-            });
+        if (requester?.role !== "ADMIN" && requester?.idUser !== findUser.id) {
+            forbidden(response, "You can only edit your own account."); return;
         }
 
-        if (classId !== undefined) {
-            const findClass = await prisma.classes.findUnique({
-                where: {
-                    idClass: Number(classId)
-                }
-            })
-
-            if (!findClass) {
-                response.status(404).json({
-                    status: false,
-                    message: `Class not found.`
-                })
-            return
-            }
-        }
-
-        const findUser = await prisma.user.findUnique({
-            where: {
-                idUser: id
-            }
-        })
-
-        if (!findUser) {
-            response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-            return
+        if (classId !== undefined && classId !== null) {
+            const findClass = await prisma.classes.findFirst({ where: { id: Number(classId) } });
+            if (!findClass) { notFound(response, "Class not found."); return; }
         }
 
         const findDuplicates = await prisma.user.findFirst({
             where: {
                 OR: [
-                    {userName},
-                    {email},
-                    {phone_number}
+                    { userName: userName || "---" },
+                    { email: email || "---" },
+                    { phone_number: phone_number || "---" }
                 ],
-                NOT: {
-                    idUser: id
-                }
+                NOT: { id: findUser.id }
             }
-        })
+        });
 
         if (findDuplicates) {
-            if (email && findDuplicates.email === email) {
-                return response.status(409).json({ status: false, message: `Email already used.` })
-            }
-            if (userName && findDuplicates.userName === userName) {
-                return response.status(409).json({ status: false, message: "Username already used" });
-            }
-            if (phone_number && findDuplicates.phone_number === phone_number) {
-                return response.status(409).json({ status: false, message: "Phone number already used" });
-            }
+            conflict(response, "Username, email, or phone number already used by another user."); return;
         }
 
         const updateData = await prisma.user.update({
+            where: { id: findUser.id },
             data: {
                 userName: userName ?? findUser.userName,
                 email: email ?? findUser.email,
@@ -310,7 +231,7 @@ export const updateUser = async (request: Request, response: Response) => {
                 phone_number: phone_number ?? findUser.phone_number,
                 parent_full_name: parent_full_name ?? findUser.parent_full_name,
                 parent_phone_number: parent_phone_number ?? findUser.parent_phone_number,
-                classId: classId ?? findUser.classId
+                classId: classId !== undefined ? Number(classId) : findUser.classId
             },
             select: {
                 uuid: true,
@@ -319,404 +240,123 @@ export const updateUser = async (request: Request, response: Response) => {
                 full_name: true,
                 role: true,
                 phone_number: true,
-                parent_full_name: true,
-                parent_phone_number: true,
                 class: true
-            },
-            where: { idUser: Number(idUser) }
-        })
+            }
+        });
 
-        response.status(200).json({
-            status: true,
-            data: updateData,
-            message: `Successfully update data.`
-        })
-        return
+        ok(response, "Successfully updated user data.", updateData);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[updateUser]", error);
+        serverError(response);
     }
-}
+};
 
-export const updatePicture = async (request: Request, response: Response) => {
+// ─── PUT /user/update/picture/:uuid ──────────────────────────────────────────
+export const updatePicture = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idUser } = request.params;
-        const { photoProfile } = request.body;
-        const id = Number(idUser)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        let findUser;
+        if (!isNaN(Number(idUser))) {
+            findUser = await prisma.user.findFirst({ where: { id: Number(idUser) } });
+        } else {
+            findUser = await prisma.user.findFirst({ where: { uuid: String(idUser) } });
         }
 
-        const findUser = await prisma.user.findUnique({
-            where: {
-                idUser: id
-            }
-        })
+        if (!findUser) { notFound(response, "User not found."); return; }
 
-        if (!findUser) {
-            response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-            return
-        }
-
-        let filename = findUser.photoProfile
+        let filename = findUser.photoProfile;
         if (request.file) {
-            filename = request.file.filename
+            filename = request.file.filename;
 
-            let path  = `${BASE_URL}/public/user_image/${findUser.photoProfile}`
-            let exists = fs.existsSync(path)
-            if(exists && findUser.photoProfile !== ``) fs.unlinkSync(path)
+            const path = `${BASE_URL}/public/user_image/${findUser.photoProfile}`;
+            if (fs.existsSync(path) && findUser.photoProfile !== "") {
+                fs.unlinkSync(path);
+            }
         }
 
         const updateData = await prisma.user.update({
-            data: {
-                photoProfile: filename
-            },
-            select: {
-                uuid: true,
-                userName: true,
-                email: true,
-                full_name: true,
-                role: true,
-                phone_number: true,
-                parent_full_name: true,
-                parent_phone_number: true,
-                class: true,
-                photoProfile: true
-            },
-            where: { idUser: Number(idUser) }
-        })
+            where: { id: findUser.id },
+            data: { photoProfile: filename },
+            select: { uuid: true, userName: true, photoProfile: true }
+        });
 
-        response.status(200).json({
-            status: true,
-            data: updateData,
-            message: `Successfully update data.`
-        })
-        return
+        ok(response, "Successfully updated profile picture.", updateData);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[updatePicture]", error);
+        serverError(response);
     }
-}
+};
 
-export const updatePasswordAdmin = async (request: Request, response: Response) => {
+// ─── PUT /user/update-password/:uuid ─────────────────────────────────────────
+export const updatePasswordUser = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idUser } = request.params;
-        const { password } = request.body;
-        const id = Number(idUser)
+        const { oldPassword, newPassword, confirmPassword } = request.body;
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        if (newPassword !== confirmPassword) {
+            badRequest(response, "Password confirmation does not match."); return;
         }
 
-        const findUser = await prisma.user.findUnique({
-            where: {
-                idUser: id
-            }
-        })
-
-        if (!findUser) {
-            response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-            return
+        let findUser;
+        if (!isNaN(Number(idUser))) {
+            findUser = await prisma.user.findFirst({ where: { id: Number(idUser) } });
+        } else {
+            findUser = await prisma.user.findFirst({ where: { uuid: String(idUser) } });
         }
 
-        const isSame = await bcrypt.compare(password, findUser.password)
+        if (!findUser) { notFound(response, "User not found."); return; }
 
-        if (isSame) {
-            response.status(400).json({
-                status: false,
-                message: `New password cannot be the same as old password.`
-            })
-            return
-        }
-
-        const hashed = await bcrypt.hash(password, 10)
-
-        await prisma.user.update({
-            where: { idUser: id },
-            data: { password: hashed }
-        })
-
-        response.status(200).json({
-            status: true,
-            message: `Successfully update user password.`
-        })
-        return
-    } catch (error) {
-        console.error(error) 
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
-    }
-}
-
-export const updatePasswordUser = async (request: Request, response: Response) => {
-    try {
-        const { idUser } = request.params;
-        const id = Number(idUser)
-        const { oldPassword, newPassword, confirmPassword } =  request.body;
-
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
-        }
-
-        if ( newPassword !== confirmPassword ) {
-            response.status(400).json({
-                status: false,
-                message: `Password confirmation does not match.`
-            })
-            return
-        }
-
-        const findUser = await prisma.user.findUnique({
-            where:{ idUser: id }
-        })
-
-        if (!findUser) {
-            response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-            return
-        }
-
-        const validOld = await bcrypt.compare(oldPassword, findUser.password)
-
+        const validOld = await bcrypt.compare(oldPassword, findUser.password);
         if (!validOld) {
-            response.status(401).json({
-                status: false,
-                message: `Old password is incorrect.`
-            })
-            return
+            forbidden(response, "Old password is incorrect."); return;
         }
 
-        const samePassword = await bcrypt.compare(newPassword, findUser.password)
-
+        const samePassword = await bcrypt.compare(newPassword, findUser.password);
         if (samePassword) {
-            response.status(400).json({
-                status: false,
-                message: `New password cannot be same as old password.`
-            })
-            return
+            badRequest(response, "New password cannot be the same as old password."); return;
         }
 
-        const hashed = await bcrypt.hash(newPassword, 10)
-
+        const hashed = await bcrypt.hash(newPassword, 10);
         await prisma.user.update({
-            where: { idUser: id },
+            where: { id: findUser.id },
             data: { password: hashed }
-        })
+        });
 
-        response.status(200).json({
-            status: true,
-            message: `Successfully updated password.`
-        })
-        return
+        ok(response, "Successfully updated password.");
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[updatePasswordUser]", error);
+        serverError(response);
     }
-}
+};
 
-export const deleteUser = async( request: Request, response: Response ) => {
+// ─── DELETE /user/delete/:uuid ───────────────────────────────────────────────
+export const deleteUser = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idUser } = request.params;
-        const id = Number(idUser)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        let findUser;
+        if (!isNaN(Number(idUser))) {
+            findUser = await prisma.user.findFirst({ where: { id: Number(idUser) } });
+        } else {
+            findUser = await prisma.user.findFirst({ where: { uuid: String(idUser) } });
         }
 
-        const findUser = await prisma.user.findUnique({
-            where: { idUser: id }
-        })
+        if (!findUser) { notFound(response, "User not found."); return; }
 
-        if (!findUser) {
-            response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-            return
+        const path = `${BASE_URL}/public/user_image/${findUser.photoProfile}`;
+        if (fs.existsSync(path) && findUser.photoProfile !== "") {
+            fs.unlinkSync(path);
         }
-
-        let path = `${BASE_URL}/public/user_image/${findUser.photoProfile}`
-        let exists = fs.existsSync(path)
-        if (exists && findUser.photoProfile !== ``) fs.unlinkSync(path)
 
         const deletedData = await prisma.user.delete({
-            where: {
-                idUser: id
-            },
-            select: {
-                idUser: true,
-                uuid: true,
-                userName: true,
-                email: true,
-                full_name: true,
-                role: true
-            }
-        })
+            where: { id: findUser.id },
+            select: { uuid: true, userName: true, email: true, role: true }
+        });
 
-        response.status(200).json({
-            status: true,
-            data: deletedData,
-            message: `Successfully delete data.`
-        })
-        return
+        ok(response, "Successfully deleted user.", deletedData);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
-    }
-}
-
-export const auth = async (request: Request, response: Response) => {
-    try {
-        const { email, password } = request.body;
-
-        const invalid = () => {
-            return response.status(401).json({
-                status: false,
-                logged: false,
-                message: "Invalid credentials."
-            });
-        };
-
-        const admin = await prisma.admin.findFirst({
-            where: { email }
-        });
-
-        if (admin) {
-            const match = await bcrypt.compare(password, admin.password);
-            if (!match) return invalid();
-
-            const data = {
-                idAdmin: admin.idAdmin,
-                email: admin.email,
-                role: "ADMIN",
-                userName: admin.username
-            };
-
-            if (!process.env.SECRET) {
-                response.status(500).json({
-                    status: false,
-                    message: `Server configuration error.`
-                })
-                return
-            }
-
-            const TOKEN = Jwt.sign(
-                { idAdmin: admin.idAdmin, email: admin.email, role: "ADMIN" },
-                process.env.SECRET,
-                { expiresIn: "1d" }
-            );
-
-            return response.status(200).json({
-                status: true,
-                logged: true,
-                data,
-                message: "Successfully logged in.",
-                TOKEN
-            });
-        }
-
-        const user = await prisma.user.findFirst({
-            where: { email }
-        });
-
-        if (user) {
-            const match = await bcrypt.compare(password, user.password);
-            if (!match) return invalid();
-
-            const data = {
-                idUser: user.idUser,
-                email: user.email,
-                role: user.role,
-                userName: user.userName
-            };
-
-            if (!process.env.SECRET){
-                response.status(500).json({
-                    status: false,
-                    message: `Server configuration error.`
-                })
-                return
-            }
-
-            const TOKEN = Jwt.sign(
-                { idUser: user.idUser, email: user.email, role: user.role },
-                process.env.SECRET,
-                { expiresIn: "1d" }
-            );
-
-            return response.status(200).json({
-                status: true,
-                logged: true,
-                data,
-                message: "Successfully logged in.",
-                TOKEN
-            });
-        }
-
-        if (!user && !admin) {
-            return response.status(404).json({
-                status: false,
-                message: `User not found.`
-            })
-        }
-
-        return invalid();
-
-    } catch (error) {
-        console.error(error);
-
-        return response.status(500).json({
-            status: false,
-            message: "Internal server error."
-        });
+        console.error("[deleteUser]", error);
+        serverError(response);
     }
 };

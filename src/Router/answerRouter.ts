@@ -3,10 +3,12 @@ import { submitAnswer, getMyProgress, getQuizReview, getQuizDifficulty } from ".
 import { verifyToken, verifyRole } from "../middleware/auth"
 import { answerLimiter } from "../middleware/rateLimiter"
 
-const router = express.Router({ mergeParams: true }) // mergeParams supaya :idQuiz dari parent terbaca
+// mergeParams: true — supaya :uuid dari parent route terbaca di sini
+const router = express.Router({ mergeParams: true })
 router.use(express.json())
 
-// POST /quiz/:idQuiz/answers          — Siswa submit/update jawaban satu soal
+// POST /quiz/:uuid/answers          — Siswa submit/update jawaban satu soal
+// Body: { questionUuid, optionUuid } — TIDAK menggunakan integer ID
 router.post(
     "/",
     answerLimiter,

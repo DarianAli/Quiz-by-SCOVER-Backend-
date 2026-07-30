@@ -92,11 +92,11 @@ export async function checkClassExistence(
     const uniqueClassIds = [...new Set(validRows.map(r => Number(r.data.classId)))];
 
     const existingClasses = await prisma.classes.findMany({
-        where:  { idClass: { in: uniqueClassIds } },
-        select: { idClass: true },
+        where:  { id: { in: uniqueClassIds } },
+        select: { id: true },
     });
 
-    const validClassIds = new Set(existingClasses.map(c => c.idClass));
+    const validClassIds = new Set(existingClasses.map(c => c.id));
     const passedRows: ValidatedRow[] = [];
 
     for (const item of validRows) {
@@ -332,3 +332,5 @@ export function handleBulkUploadError(res: Response, error: unknown): void {
         message: "Internal server error.",
     });
 }
+
+

@@ -1,268 +1,197 @@
 import { Response, Request } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { BASE_URL } from "../global";
-import fs from "fs"
+import fs from "fs";
 import prisma from "../config/prisma";
+import { ok, created, badRequest, notFound, serverError } from "../utils/response.util";
+import { getPagination, buildMeta } from "../utils/pagination.util";
+import { string } from "joi";
 
-
-export const createQuestion = async (request: Request, response: Response) => {
+// ─── POST /question/add ──────────────────────────────────────────────────────
+export const createQuestion = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { question_text, question_image, difficulty, poin, quizId } = request.body;
-        const uuid = uuidv4()
+        const { question_text, difficulty, poin, quizId, discussion, order_index } = request.body;
+        
+        let filename = "";
+        if (request.file) filename = request.file.filename;
 
-        let filename = ""
-        if (request.file) filename = request.file.filename
+        // Resolve quiz by uuid
 
-        const parsedQuizId = Number(quizId);
-        const parsedPoin = Number(poin);
-
-        if (Number.isNaN(parsedQuizId) || Number.isNaN(parsedPoin)) {
-            response.status(400).json({
-                success: false,
-                message: "quizId and poin must be valid numbers"
-            });
+        const quiz = await prisma.quiz.findFirst({where: { uuid: String(quizId) }})
+        if (!quiz) {
+            notFound(response, "Quiz not found");
             return;
         }
 
+        const parsedPoin = Number(poin)
+        if (isNaN(parsedPoin)) {
+            badRequest(response, "poin must be a valid number.")
+            return;
+        }
 
         const newQuestion = await prisma.questions.create({
             data: {
-                uuid,
+                uuid: uuidv4(),
                 question_text,
                 question_image: filename,
-                difficulty,
+                difficulty: difficulty ?? "EASY",
                 poin: parsedPoin,
-                quizId: parsedQuizId
+                discussion: discussion ?? null,
+                order_index: order_index ? Number(order_index) : 0,
+                quizId: quiz.id,
             },
             include: {
                 options: true,
-                answers: true
             }
-        })
-        response.status(201).json({
-            success: true,
-            data: newQuestion
-        })       
-        return
+        });
 
+        created(response, "Question created successfully.", newQuestion);
     } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: `failed to create question.`
-        })
-        return
+        console.error("[createQuestion]", error);
+        serverError(response);
     }
-}
+};
 
-
-export const updateQuestion = async (request: Request, response: Response) => {
+// ─── PUT /question/update/:uuid ──────────────────────────────────────────────
+export const updateQuestion = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idQuestion } = request.params;
-        const { question_text, question_image, difficulty, poin, quizId } = request.body;
-        const id = Number(idQuestion)
+        const { question_text, difficulty, poin, discussion, order_index } = request.body;
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id must be a number"
-            })
-            return
+        let findQuestion;
+        if (!isNaN(Number(idQuestion))) {
+            findQuestion = await prisma.questions.findFirst({ where: { id: Number(idQuestion) } });
+        } else {
+            findQuestion = await prisma.questions.findFirst({ where: { uuid: String(idQuestion) } });
         }
-
-        const findQuestion = await prisma.questions.findFirst ({
-            where: { idQuestion: id }
-        })
 
         if (!findQuestion) {
-            response.status(404).json ({
-                success: false,
-                message: "question not found"
-            })
-            return
-        }
-
-        const parsedPoin = Number(poin);
-
-        if (Number.isNaN(parsedPoin)) {
-            response.status(400).json({
-                success: false,
-                message: "poin must be valid numbers"
-            });
+            notFound(response, "Question not found.");
             return;
         }
 
-        let filename = findQuestion.question_image
+        let filename = findQuestion.question_image;
         if (request.file) {
-            filename = request.file.filename
+            filename = request.file.filename;
 
-            let path = `${BASE_URL}/public/question_image/${findQuestion.question_image}`
-            let exists = fs.existsSync(path)
-            if(exists && findQuestion.question_image !== ``) fs.unlinkSync(path)
+            const path = `${BASE_URL}/public/question_image/${findQuestion.question_image}`;
+            if (fs.existsSync(path) && findQuestion.question_image !== "") {
+                fs.unlinkSync(path);
+            }
         }
 
         const updatedQuestion = await prisma.questions.update({
-            where: { idQuestion: Number(idQuestion) },
+            where: { id: findQuestion.id },
             data: {
                 question_text: question_text ?? findQuestion.question_text,
                 question_image: filename,
                 difficulty: difficulty ?? findQuestion.difficulty,
-                poin: parsedPoin ?? findQuestion.poin,
-            }
-        })
-
-        response.status(200).json({
-            success: true,
-            data: updatedQuestion,
-            message: "question updated successfully"
-        })
-        return
-
-    }   catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: `failed to update question.`
-        })
-        return
-        }
-}
-
-export const getAllQuestion = async (request: Request, response: Response) => {
-    try {
-        const { search } = request.query;
-
-        const getAllQuestion = await prisma.questions.findMany ({
-            where: { question_text: { contains: search?.toString() || "" } },
+                poin: poin !== undefined ? Number(poin) : findQuestion.poin,
+                discussion: discussion !== undefined ? discussion : findQuestion.discussion,
+                order_index: order_index !== undefined ? Number(order_index) : findQuestion.order_index,
+            },
             include: {
                 options: true,
-                answers: true
             }
-        })
+        });
 
-            response.status(200).json({
-            success: true,
-            data : getAllQuestion,
-            message : "All question found successfully"
-        })
-        return
+        ok(response, "Question updated successfully.", updatedQuestion);
     } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to fetch all question."
-        })
-        return
+        console.error("[updateQuestion]", error);
+        serverError(response);
     }
-}
+};
 
-export const getQuestionById = async (request: Request, response: Response) => {
+// ─── GET /question/all ───────────────────────────────────────────────────────
+export const getAllQuestion = async (request: Request, response: Response): Promise<void> => {
     try {
-        const idQuestion = request.params.idQuestion;
-        const id = Number(idQuestion)
+        const { search = "", quizId } = request.query;
+        const { skip, take, page, limit } = getPagination(request.query);
 
-        if (!idQuestion) {
-                response.status(400).json({
-                success: false,
-                message: "id Question is required"
+        const where: any = {
+            question_text: { contains: String(search) },
+        };
+        if (quizId) where.quizId = Number(quizId);
+
+        const [total, questions] = await Promise.all([
+            prisma.questions.count({ where }),
+            prisma.questions.findMany({
+                where,
+                skip,
+                take,
+                orderBy: { order_index: "asc" },
+                include: {
+                    options: { orderBy: { order_index: "asc" } },
+                }
             })
-            return
-        }
+        ]);
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id Question must be a number"
-            })
-            return
-        }
-
-        const findQuestion = await prisma.questions.findFirst ({
-            where: { idQuestion: id },
-            include: {
-                options: true,
-                answers: true
-            }
-        })
-
-        if (!findQuestion) {
-            response.status(404).json ({
-                success: false,
-                message: "question not found"
-            })
-            return
-        }
-
-        const AllQuesion = await prisma.questions.findMany ({
-            include: {
-                options: true,
-                answers: true
-            }
-        })
-
-        response.status(200).json({
-            success: true,
-            data: findQuestion,
-            message: "question found successfully"
-        })
-        return
-
+        ok(response, "All questions found successfully.", questions, buildMeta(total, page, limit));
     } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to fetch question."
-        })
-        return
+        console.error("[getAllQuestion]", error);
+        serverError(response);
     }
-}
+};
 
-export const deleteQuestion = async (request: Request, response: Response) => {
-    try{ 
+// ─── GET /question/:uuid ─────────────────────────────────────────────────────
+export const getQuestionById = async (request: Request, response: Response): Promise<void> => {
+    try {
         const { idQuestion } = request.params;
-        const id = Number(idQuestion)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id must be a number"
-            })
-            return
+        let findQuestion;
+        if (!isNaN(Number(idQuestion))) {
+            findQuestion = await prisma.questions.findFirst({
+                where: { id: Number(idQuestion) },
+                include: { options: { orderBy: { order_index: "asc" } } }
+            });
+        } else {
+            findQuestion = await prisma.questions.findFirst({
+                where: { uuid: String(idQuestion) },
+                include: { options: { orderBy: { order_index: "asc" } } }
+            });
         }
-
-        const findQuestion = await prisma.questions.findFirst ({
-            where: { idQuestion: id }
-        })
 
         if (!findQuestion) {
-            response.status(404).json ({
-                success: false,
-                message: "question not found"
-            })
-            return
+            notFound(response, "Question not found.");
+            return;
         }
 
-        let path = `${BASE_URL}/public/question_image/${findQuestion.question_image}`
-        let exists = fs.existsSync(path)
-        if(exists && findQuestion.question_image !== ``) fs.unlinkSync(path)
+        ok(response, "Question found successfully.", findQuestion);
+    } catch (error) {
+        console.error("[getQuestionById]", error);
+        serverError(response);
+    }
+};
+
+// ─── DELETE /question/delete/:uuid ───────────────────────────────────────────
+export const deleteQuestion = async (request: Request, response: Response): Promise<void> => {
+    try {
+        const { idQuestion } = request.params;
+
+        let findQuestion;
+        if (!isNaN(Number(idQuestion))) {
+            findQuestion = await prisma.questions.findFirst({ where: { id: Number(idQuestion) } });
+        } else {
+            findQuestion = await prisma.questions.findFirst({ where: { uuid: String(idQuestion) } });
+        }
+
+        if (!findQuestion) {
+            notFound(response, "Question not found.");
+            return;
+        }
+
+        const path = `${BASE_URL}/public/question_image/${findQuestion.question_image}`;
+        if (fs.existsSync(path) && findQuestion.question_image !== "") {
+            fs.unlinkSync(path);
+        }
 
         const deletedQuestion = await prisma.questions.delete({
-            where: { idQuestion: Number(idQuestion) }
-        })
+            where: { id: findQuestion.id }
+        });
 
-        response.status(200).json({
-            success: true,
-            data: deletedQuestion,
-            message: "question deleted successfully"
-        })
-        return
-
+        ok(response, "Question deleted successfully.", deletedQuestion);
     } catch (error) {
-        console.error(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to delete question."
-        })
-        return
+        console.error("[deleteQuestion]", error);
+        serverError(response);
     }
-}
+};

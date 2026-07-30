@@ -9,7 +9,8 @@ const addDataSchema = Joi.object ({
     question_image: Joi.string().uri().optional(),
     difficulty: Joi.string().valid('EASY', 'MEDIUM', 'HARD').required(),
     poin: Joi.number().min(0).required(),
-    quizId: Joi.number().required()
+    quizId: Joi.string().required(),
+    discussion: Joi.string().trim().max(5000).allow("").optional(),
 })
 
 const editDataSchema = Joi.object ({
@@ -17,6 +18,8 @@ const editDataSchema = Joi.object ({
     question_image: Joi.string().uri().optional(),
     difficulty: Joi.string().valid('EASY', 'MEDIUM', 'HARD').optional(),
     poin: Joi.number().min(0).optional(),
+    discussion: Joi.string().trim().max(5000).allow("").optional(),
+    order_index: Joi.number().min(0).optional(),
 })
 
 export const verifyAddQuestion = (request: Request, response: Response, next: NextFunction) =>  {
@@ -32,6 +35,9 @@ export const verifyAddQuestion = (request: Request, response: Response, next: Ne
     request.body.question_text = xss(request.body.question_text)
     if(request.body.question_image) {
         request.body.question_image = xss(request.body.question_image)
+    }
+    if(request.body.discussion) {
+        request.body.discussion = xss(request.body.discussion)
     }
     return next();
 }
@@ -51,6 +57,9 @@ export const verifyEditQuestion = (request: Request, response: Response, next: N
     }
     if (request.body.question_image) {
         request.body.question_image = xss(request.body.question_image)
+    }
+    if (request.body.discussion) {
+        request.body.discussion = xss(request.body.discussion)
     }
     return next();
 }

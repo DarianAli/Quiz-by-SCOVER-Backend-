@@ -1,264 +1,239 @@
-import { Response, Request } from "express"
-import { v4 as uuidv4 } from "uuid";
-import prisma from "../config/prisma";
+import { Request, Response } from "express";
+import { v4 as uuidv4 }      from "uuid";
+import prisma                 from "../config/prisma";
+import {
+    ok, created, badRequest, notFound, unauthorized, serverError, forbidden
+} from "../utils/response.util";
+import { getPagination, buildMeta } from "../utils/pagination.util";
 
-
-export const getAllQuiz = async (request: Request, response: Response) => {
+// ─── GET /quiz/all ────────────────────────────────────────────────────────────
+export const getAllQuiz = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { search } = request.query;
-        
-        const AllQuiz = await prisma.quiz.findMany({
-            where: {quiz_title: {contains: search?.toString() || ""}}, 
-            include: {
-                subject: true,
-                questions: true,
-                scores: true
-            }  
-        })
+        const { search = "", subjectId, difficulty, status } = req.query;
+        const { skip, take, page, limit } = getPagination(req.query);
 
-            response.status(200).json({
-            status: true,
-            data : AllQuiz,
-            message : "All quiz found successfully"
-        })
-        return
-    } catch (error) {
-            console.error(error)
-            response.status(500).json({
-              status: false,
-              message: `failed to fetch all quiz.`
-        })
-        return
+        const where: Record<string, unknown> = {
+            quiz_title: { contains: String(search) },
+        };
+
+        if (subjectId) where.subjectId = Number(subjectId);
+        if (difficulty) where.difficulty = String(difficulty).toUpperCase();
+        if (status)     where.status     = String(status).toUpperCase();
+
+        const [total, quizzes] = await Promise.all([
+            prisma.quiz.count({ where }),
+            prisma.quiz.findMany({
+                where,
+                skip,
+                take,
+                orderBy: { created_at: "desc" },
+                include: {
+                    subject:   { select: { uuid: true, subject_name: true } },
+                    questions: { where: { deleted_at: null }, select: { id: true } },
+                    _count:    { select: { attempts: true, scores: true } },
+                },
+            }),
+        ]);
+
+        const data = quizzes.map(q => ({
+            uuid:            q.uuid,
+            quiz_title:      q.quiz_title,
+            quiz_date:       q.quiz_date,
+            duration:        q.duration,
+            status:          q.status,
+            difficulty:      q.difficulty,
+            retake_policy:   q.retake_policy,
+            max_attempts:    q.max_attempts,
+            subject:         q.subject,
+            total_questions: q.questions.length,
+            total_attempts:  q._count.attempts,
+            created_at:      q.created_at,
+        }));
+
+        ok(res, "Quizzes retrieved successfully.", data, buildMeta(total, page, limit));
+    } catch (err) {
+        console.error("[getAllQuiz]", err);
+        serverError(res);
     }
 };
 
-export const getQuizById = async (request: Request, response: Response) => {
+// ─── GET /quiz/:uuid ──────────────────────────────────────────────────────────
+export const getQuizByUuid = async (req: Request, res: Response): Promise<void> => {
     try {
-        const idQuiz = request.params.idQuiz;
-        const id = Number(idQuiz)
+        const { uuid } = req.params;
 
-        if (!idQuiz) {
-                response.status(400).json({
-                success: false,
-                message: "id Quiz is required"
-            })
-            return
-        }
-
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                success: false,
-                message: "id Quiz must be a number"
-            })
-            return
-        }
-
-        const findQuiz = await prisma.quiz.findFirst({
-          where: { idQuiz: id }
-        })
-
-        if (!findQuiz) {
-            response.status(404).json({
-                success: false,
-                message: "quiz not found"
-            })
-            return
-        }
-
-        const AllQuiz = await prisma.quiz.findUnique({
-            where: { idQuiz: Number(idQuiz)},
+        const quiz = await prisma.quiz.findFirst({
+            where: { uuid: String(uuid) },
             include: {
-                subject: true,
-                questions: true,
-                scores: true
-            }
+                subject:   { select: { uuid: true, subject_name: true } },
+                questions: {
+                    where:   { deleted_at: null },
+                    orderBy: { order_index: "asc" },
+                    include: {
+                        options: {
+                            orderBy: { order_index: "asc" },
+                        },
+                    },
+                },
+            },
+        });
 
-        })
+        if (!quiz) { notFound(res, "Quiz tidak ditemukan."); return; }
 
-          response.status(200).json({
-            success: true,
-            data : AllQuiz,
-            message : "quiz found successfully"
-        })
-        return
-
-    } catch (error) {
-            console.error(error)
-            response.status(500).json({
-              success: false,
-              message: `failed to fetch quiz.`
-        })
-        return
+        ok(res, "Quiz retrieved successfully.", quiz);
+    } catch (err) {
+        console.error("[getQuizById]", err);
+        serverError(res);
     }
-}
+};
 
-export const createQuiz = async (request: Request, response: Response) => {
+// ─── POST /quiz/add ───────────────────────────────────────────────────────────
+export const createQuiz = async (req: Request, res: Response): Promise<void> => {
     try {
-      const user = request.user;
-      const admin = request.admin
+        const user  = req.user;
+        if (!user) { unauthorized(res); return; }
 
-      let createdById: number | null = null
-      let creatorRole: any = null
+        const {
+            quiz_title, quiz_date, duration, status, difficulty,
+            subjectId, retake_policy, max_attempts,
+        } = req.body;
 
-      if (admin) {
-        createdById = admin.idAdmin
-        creatorRole = admin.role
-      } else if (user) {
-        createdById = user.idUser
-        creatorRole = user.role
-      } else {
-        response.status(401).json({
-          success: false,
-          message: "Unauthorized"
-        })
-        return
-      }
+        if (!duration || Number(duration) <= 0) {
+            badRequest(res, "Duration harus lebih dari 0."); return;
+        }
 
-      console.log("CREATED BY ID:", createdById)
+        if (!quiz_title) { badRequest(res, "quiz_title wajib diisi."); return; }
 
-      const { quiz_title, quiz_date, duration, status, difficulty } = request.body;
-      const uuid = uuidv4();
-  
-      if (!duration || duration <= 0) {
-          response.status(400).json({
-          success: false,
-          message: "duration must be greater than 0"
-        })
-        return
-      }
-    
+        // Validate subject if provided
+        let resolvedSubjectId: number | null = null;
+        if (subjectId) {
+            const subject = await prisma.subject.findFirst({
+                where: { uuid: String(subjectId) }
+            })
+            if (!subject) { notFound(res, "Subject tidak ditemukan."); return; }
+            resolvedSubjectId = subject.id
+        }
+
+        const VALID_STATUSES = ["DRAFT", "PUBLISHED"];
+        const quizStatus = String(status || "DRAFT").toUpperCase();
+        if (!VALID_STATUSES.includes(quizStatus)) {
+            badRequest(res, "status harus DRAFT atau PUBLISHED"); return;
+        }
+
+        // Validate retake_policy
+        const VALID_POLICIES = ["ONCE", "LIMITED", "UNLIMITED"];
+        const policy = String(retake_policy ?? "ONCE").toUpperCase();
+        if (!VALID_POLICIES.includes(policy)) {
+            badRequest(res, "retake_policy harus ONCE, LIMITED, atau UNLIMITED."); return;
+        }
+
+        if (policy === "LIMITED" && (!max_attempts || Number(max_attempts) < 1)) {
+            badRequest(res, "max_attempts wajib diisi dan >= 1 jika retake_policy = LIMITED."); return;
+        }
+
         const newQuiz = await prisma.quiz.create({
-          data: {
-            uuid,
-            quiz_title,
-            quiz_date: new Date(quiz_date),
-            duration: Number(duration),
-            status,
-            difficulty,
-            created_by: createdById,
-            creator_role: creatorRole 
-          },
-          include: {
-            subject: true,
-            questions: true,
-            scores: true,
-          }
+            data: {
+                uuid:          uuidv4(),
+                quiz_title,
+                quiz_date:     quiz_date ? new Date(quiz_date) : new Date(),
+                duration:      Number(duration),
+                status:        quizStatus as "DRAFT" | "PUBLISHED",
+                difficulty:    difficulty  ?? "EASY",
+                subjectId:     resolvedSubjectId,
+                retake_policy: policy as "ONCE" | "LIMITED" | "UNLIMITED",
+                max_attempts:  policy === "LIMITED" ? Number(max_attempts) : null,
+                created_by:    user.idUser ?? null,
+                creator_role:  user.role   as "ADMIN" | "TENTOR" | "STUDENT",
+            },
+            include: {
+                subject: { select: { uuid: true, subject_name: true } },
+            },
         });
-          console.log("USER DATA: ",user)
-          response.status(201).json({
-          success: true,
-          data: newQuiz
-        })
-        return
-    
-      } catch (error) {
-          console.error(error);
-          response.status(500).json({
-            success: false,
-            message: `Failed to create quiz.`,
-        })
-        return
-      }
-}
 
+        created(res, "Quiz berhasil dibuat.", newQuiz);
+    } catch (err) {
+        console.error("[createQuiz]", err);
+        serverError(res);
+    }
+};
 
-export const updateQuiz = async (request: Request, response: Response) => {
+// ─── PUT /quiz/update/:uuid ───────────────────────────────────────────────────
+export const updateQuiz = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { idQuiz } = request.params;
-        const { quiz_title, quiz_date, duration, status, difficulty } = request.body;
-        const id = Number(idQuiz)
+        const { uuid } = req.params;
+        const user = req.user;
+        const { quiz_title, quiz_date, duration, status, difficulty, subjectId, retake_policy, max_attempts } = req.body;
 
-        if (Number.isNaN(id)) {
-          response.status(400).json({
-              success: false,
-              message: "id Quiz must be a number"
-          })
-          return
-      }
+        if (!user) {
+            unauthorized(res, "Authentication required.");
+            return
+        }
 
-      const findQuiz = await prisma.quiz.findFirst({
-        where: { idQuiz: id }
-      })
+        const quiz = await prisma.quiz.findFirst({ where: { uuid: String(uuid) } });
+        if (!quiz) { notFound(res, "Quiz tidak ditemukan."); return; }
 
-      if (!findQuiz) {
-          response.status(404).json({
-              success: false,
-              message: "quiz not found"
-          })
-          return
-      }
-    
-        const updatedQuiz = await prisma.quiz.update({
-          where: { idQuiz: Number(idQuiz) },
-          data: {
-            quiz_title,
-            quiz_date: new Date(quiz_date),
-            duration: Number(duration),
-            status,
-            difficulty,
-          }
+        if (user.role === "TENTOR" && quiz.created_by !== user?.idUser) {
+            forbidden(res, "Anda tidak memiliki akses untuk mengubah quiz ini.")
+            return
+        }
+
+        const VALID_STATUSES = ["DRAFT", "PUBLISHED"];
+        const quizStatus = status ? String(status).toUpperCase() : quiz.status;
+        if (!VALID_STATUSES.includes(quizStatus)) {
+            badRequest(res, "status harus DRAFT atau PUBLISHED."); return;
+        }
+
+        const VALID_POLICIES = ["ONCE", "LIMITED", "UNLIMITED"];
+        const policy = retake_policy
+            ? String(retake_policy).toUpperCase()
+            : quiz.retake_policy;
+
+        if (!VALID_POLICIES.includes(policy)) {
+            badRequest(res, "retake_policy harus ONCE, LIMITED, atau UNLIMITED."); return;
+        }
+
+        const updated = await prisma.quiz.update({
+            where: { id: quiz.id },
+            data: {
+                quiz_title:    quiz_title  ?? quiz.quiz_title,
+                quiz_date:     quiz_date   ? new Date(quiz_date) : quiz.quiz_date,
+                duration:      duration    ? Number(duration)    : quiz.duration,
+                status:        quizStatus as "DRAFT" | "PUBLISHED",
+                difficulty:    difficulty  ?? quiz.difficulty,
+                subjectId:     subjectId !== undefined ? Number(subjectId) : quiz.subjectId,
+                retake_policy: policy as "ONCE" | "LIMITED" | "UNLIMITED",
+                max_attempts:  policy === "LIMITED"
+                    ? Number(max_attempts ?? quiz.max_attempts)
+                    : null,
+            },
+            include: { subject: { select: { uuid: true, subject_name: true } } },
         });
-    
-          response.status(200).json({
-          status: true,
-          data: updatedQuiz,
-          message: "Quiz updated successfully"
-        })
-        return
-    
-      } catch (error) {
-          console.error(error)
-          response.status(500).json({
-            status: false,
-            message: `Failed to update quiz.`,
-        })
-        return
-      }
-}
 
+        ok(res, "Quiz berhasil diperbarui.", updated);
+    } catch (err) {
+        console.error("[updateQuiz]", err);
+        serverError(res);
+    }
+};
 
-export const deleteQuiz = async (request: Request, response: Response) => {
+// ─── DELETE /quiz/delete/:id (soft delete via Prisma extension) ─────────────
+export const deleteQuiz = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { idQuiz } = request.params;
-      const id = Number(idQuiz)
+        const { id } = req.params;
 
-      if (Number.isNaN(id)) {
-        response.status(400).json({
-            success: false,
-            message: "id Quiz must be a number"
-        })
-        return
-    }
+        const where = !isNaN(Number(id))
+            ? { id: Number(id) }
+            : { uuid: String(id) };
 
-    const findQuiz = await prisma.quiz.findFirst({
-      where: { idQuiz: id }
-    })
+        const quiz = await prisma.quiz.findFirst({ where });
+        if (!quiz) { notFound(res, "Quiz tidak ditemukan."); return; }
 
-    if (!findQuiz) {
-        response.status(404).json({
-            status: false,
-            message: "quiz not found"
-        })
-        return
+        await prisma.quiz.delete({ where: { id: quiz.id } });
+
+        ok(res, "Quiz berhasil dihapus.");
+    } catch (err) {
+        console.error("[deleteQuiz]", err);
+        serverError(res);
     }
-  
-      const deletedQuiz = await prisma.quiz.delete({
-        where: { idQuiz: Number(idQuiz) }
-      });
-  
-        response.status(200).json({
-        status: true,
-        data: deletedQuiz,
-        message: "Quiz deleted successfully"
-      })
-      return
-  
-    } catch (error) {
-      console.error(error)
-        response.status(500).json({
-          status: false,
-          message: `Failed to delete quiz.`,
-      })
-      return
-    }
-}
+};
+

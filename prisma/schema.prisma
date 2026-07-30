@@ -1,8 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma Schema — LMS Quiz Platform
+// ─────────────────────────────────────────────────────────────────────────────
 
 generator client {
   provider = "prisma-client-js"
@@ -13,200 +11,300 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum role {
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
   ADMIN
   STUDENT
   TENTOR
 }
 
-enum classProgram {
+enum ClassProgram {
   UTBK
   SKD
 }
 
-enum status {
-  INCOMPLETED
-  COMPLETED
+enum QuizStatus {
+  DRAFT
+  PUBLISHED
 }
 
-enum difficulty {
-  HARD
-  MEDIUM
+enum Difficulty {
   EASY
+  MEDIUM
+  HARD
 }
+
+/// Apakah quiz bisa diulang
+enum RetakePolicy {
+  ONCE // Hanya sekali
+  LIMITED // Terbatas (lihat max_attempts di quiz)
+  UNLIMITED // Bebas berulang
+}
+
+enum ActivityAction {
+  STARTED_QUIZ
+  COMPLETED_QUIZ
+  REVIEWED_QUIZ
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
 
 model admin {
-  idAdmin         Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  username        String        @default("")
-  password        String        @default("")
-  email           String        @default("")
-  role            role          @default(ADMIN)
-  phone_number    String        @default("")
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  id           Int      @id @default(autoincrement())
+  uuid         String   @unique @default(uuid())
+  username     String   @unique
+  password     String
+  email        String   @unique
+  phone_number String   @default("")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("admins")
 }
 
 model user {
-  idUser              Int       @id @default(autoincrement())
-  uuid                String    @unique @default("")
-  userName            String    @default("")
-  password            String    @default("")
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  userName            String    @unique
+  password            String
   full_name           String    @default("")
-  email               String    @default("")
-  role                role      @default(STUDENT)
-  class               classes   @relation(fields: [classId], references: [idClass])
-  classId             Int
+  email               String    @unique
+  role                Role      @default(STUDENT)
   phone_number        String    @default("")
   parent_full_name    String    @default("")
   parent_phone_number String    @default("")
-  photoProfile        String    @default("/public/user_image/user_profile.jpg")
+  photoProfile        String    @default("")
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
   deleted_at          DateTime? // soft delete
 
-  scores          scores[]
-  answers         answers[]
-  attempt         attempt[]
+  class   classes? @relation(fields: [classId], references: [id])
+  classId Int?
+
+  scores       scores[]
+  answers      answers[]
+  attempts     attempt[]
+  activityLogs activity_log[]
+  streak       user_streak?
+
+  @@index([classId])
+  @@index([email])
+  @@index([deleted_at])
+  @@map("users")
 }
 
 model classes {
-  idClass         Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  class_name      String        @default("")
-  class_program   classProgram?
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  id            Int           @id @default(autoincrement())
+  uuid          String        @unique @default(uuid())
+  class_name    String
+  class_program ClassProgram?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
 
-  user            user[]
-  subjectClass    subjectClass[]
+  users        user[]
+  subjectClass subjectClass[]
+
+  @@map("classes")
 }
 
 model subject {
-  idSubject    Int           @id @default(autoincrement())
-  uuid         String        @unique @default("")
-  subjectClass subjectClass[]
-  subject_name String        @default("")
-  created_at   DateTime      @default(now())
-  updated_at   DateTime      @updatedAt
-  deleted_at   DateTime?     // soft delete
+  id                 Int       @id @default(autoincrement())
+  uuid               String    @unique @default(uuid())
+  subject_name       String    @unique
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime? // soft delete
+  annual_quiz_target Int? // target jumlah quiz per tahun
 
-  quiz         quiz[]
+  subjectClass subjectClass[]
+  quizzes      quiz[]
+
+  @@index([deleted_at])
+  @@map("subjects")
 }
 
 model subjectClass {
-    subjectId Int
-    classId   Int
+  subjectId Int
+  classId   Int
 
-    subject   subject @relation(fields: [subjectId], references: [idSubject], onDelete: Cascade)
-    class     classes @relation(fields: [classId],   references: [idClass],   onDelete: Cascade)
+  subject subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class   classes @relation(fields: [classId], references: [id], onDelete: Cascade)
 
-    @@id([subjectId, classId])
-} 
+  @@id([subjectId, classId])
+  @@map("subject_classes")
+}
 
 model quiz {
-  idQuiz          Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  quiz_title      String        @default("")
-  quiz_date       DateTime      @default(now())     
-  duration        Int           @default(0)  //minutes 
-  status          status        @default(INCOMPLETED)
-  difficulty      difficulty    @default(EASY)
+  id         Int        @id @default(autoincrement())
+  uuid       String     @unique @default(uuid())
+  quiz_title String
+  quiz_date  DateTime   @default(now())
+  duration   Int        @default(30) // minutes
+  status     QuizStatus @default(DRAFT)
+  difficulty Difficulty @default(EASY)
 
-  created_by      Int?
-  creator_role    role?
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
-  deleted_at      DateTime?     // soft delete
+  /// Apakah quiz ini boleh dikerjakan ulang
+  retake_policy RetakePolicy @default(ONCE)
+  /// Jika LIMITED: berapa kali maksimum (null = ONCE / UNLIMITED)
+  max_attempts  Int?
 
-  subject         subject?      @relation(fields: [subjectId], references: [idSubject], onDelete: SetNull)
-  subjectId       Int?
+  created_by   Int? // bisa userId atau adminId
+  creator_role Role?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime? // soft delete
 
-  scores          scores[]
-  answers         answers[]
-  questions       questions[]
-  attempt         attempt[]
+  subject   subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  subjectId Int?
+
+  scores       scores[]
+  answers      answers[]
+  questions    questions[]
+  attempts     attempt[]
+  activityLogs activity_log[]
+
+  @@index([subjectId])
+  @@index([deleted_at])
+  @@map("quizzes")
 }
 
 model attempt {
-  idAttempt       Int           @id @default(autoincrement())
-  userId          Int
-  quizId          Int
+  id             Int @id @default(autoincrement())
+  attempt_number Int @default(1) // urutan attempt ke berapa untuk user + quiz ini
+  userId         Int
+  quizId         Int
 
-  start_time      DateTime      @default(now())
-  finished_time   DateTime?
-  isFinished      Boolean       @default(false)     
+  start_time    DateTime  @default(now())
+  finished_time DateTime?
+  isFinished    Boolean   @default(false)
+  created_at    DateTime  @default(now())
 
-  user            user          @relation(fields: [userId], references: [idUser])
-  quiz            quiz          @relation(fields: [quizId], references: [idQuiz]) 
+  user user @relation(fields: [userId], references: [id])
+  quiz quiz @relation(fields: [quizId], references: [id])
 
-  created_at      DateTime      @default(now())
+  score scores? // relasi 1-to-1 ke scores (setelah submit)
 
-   @@unique([userId, quizId]) // prevent double start
+  @@index([userId, quizId])
+  @@map("attempts")
 }
 
 model scores {
-  idScore         Int           @id @default(autoincrement())
-  uuid            String        @unique @default("")
-  total_questions Int           @default(0)
-  correct         Int           @default(0)
-  wrong           Int           @default(0)
-  score           Int           @default(0)
+  id              Int      @id @default(autoincrement())
+  uuid            String   @unique @default(uuid())
+  total_questions Int      @default(0)
+  correct         Int      @default(0)
+  wrong           Int      @default(0)
+  skipped         Int      @default(0)
+  score           Int      @default(0) // 0-100
+  accuracy        Float    @default(0) // percentage
+  xp_earned       Int      @default(0)
   start_time      DateTime
   finished_time   DateTime
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  duration_used   Int      @default(0) // actual minutes used
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
-  user            user          @relation(fields: [userId], references: [idUser])
-  userId          Int
-  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
-  quizId          Int
+  user      user    @relation(fields: [userId], references: [id])
+  userId    Int
+  quiz      quiz    @relation(fields: [quizId], references: [id])
+  quizId    Int
+  attempt   attempt @relation(fields: [attemptId], references: [id])
+  attemptId Int     @unique // 1 attempt = 1 score
+
+  @@index([userId])
+  @@index([quizId])
+  @@index([userId, quizId])
+  @@map("scores")
 }
 
 model answers {
-  idAnswers       Int           @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
+  attemptId   Int // jawaban terikat ke attempt tertentu
+  quizId      Int
+  userId      Int
+  questionsId Int
+  optionsId   Int
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  quizId          Int
-  userId          Int
-  questionsId     Int
-  optionsId       Int
+  quiz      quiz      @relation(fields: [quizId], references: [id])
+  user      user      @relation(fields: [userId], references: [id])
+  questions questions @relation(fields: [questionsId], references: [id])
+  options   options   @relation(fields: [optionsId], references: [id])
 
-  quiz            quiz          @relation(fields: [quizId], references: [idQuiz])
-  user            user          @relation(fields: [userId], references: [idUser])
-  questions       questions     @relation(fields: [questionsId], references: [idQuestion])
-  options         options       @relation(fields: [optionsId], references: [idOption])
-
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
-
-  @@unique([userId, quizId, questionsId])
+  // Satu jawaban per soal per attempt
+  @@unique([attemptId, questionsId])
+  @@index([userId, quizId])
+  @@map("answers")
 }
 
 model questions {
-  idQuestion     Int        @id @default(autoincrement())
-  uuid           String     @unique @default("")
-  question_text  String     @default("")
+  id             Int        @id @default(autoincrement())
+  uuid           String     @unique @default(uuid())
+  question_text  String     @db.Text
   question_image String     @default("")
-  difficulty     difficulty @default(EASY)
-  poin           Int        @default(0)
-  deleted_at     DateTime?  // soft delete
+  discussion     String     @default("") @db.Text // Pembahasan / explanasi
+  difficulty     Difficulty @default(EASY)
+  poin           Int        @default(10)
+  order_index    Int        @default(0) // urutan soal dalam quiz
+  deleted_at     DateTime?
 
-  quizId         Int
-  quiz           quiz       @relation(fields: [quizId], references: [idQuiz], onDelete: Cascade)
+  quizId Int
+  quiz   quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  options        options[]
-  answers        answers[]
+  options options[]
+  answers answers[]
+
+  @@index([quizId])
+  @@index([deleted_at])
+  @@map("questions")
 }
 
 model options {
-  idOption    Int       @id @default(autoincrement())
-  uuid        String    @unique @default("")
-  option_text String    @default("")
-  option_image String   @default("")
-  is_correct  Boolean   @default(false)
-
-  answers     answers[]
+  id           Int     @id @default(autoincrement())
+  uuid         String  @unique @default(uuid())
+  option_text  String  @db.Text
+  option_image String  @default("")
+  is_correct   Boolean @default(false)
+  order_index  Int     @default(0)
 
   questionsId Int
-  questions   questions @relation(fields: [questionsId], references: [idQuestion], onDelete: Cascade)
+  questions   questions @relation(fields: [questionsId], references: [id], onDelete: Cascade)
+
+  answers answers[]
+
+  @@index([questionsId])
+  @@map("options")
+}
+
+/// Log aktivitas student (untuk dashboard & activity feed)
+model activity_log {
+  id         Int            @id @default(autoincrement())
+  userId     Int
+  quizId     Int
+  action     ActivityAction
+  score      Int? // null jika bukan COMPLETED_QUIZ
+  created_at DateTime       @default(now())
+
+  user user @relation(fields: [userId], references: [id])
+  quiz quiz @relation(fields: [quizId], references: [id])
+
+  @@index([userId])
+  @@index([userId, created_at])
+  @@map("activity_logs")
+}
+
+/// Tracking streak belajar harian student
+model user_streak {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique
+  current_streak Int      @default(0)
+  longest_streak Int      @default(0)
+  last_activity  DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  user user @relation(fields: [userId], references: [id])
+
+  @@map("user_streaks")
 }

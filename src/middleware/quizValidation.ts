@@ -5,7 +5,7 @@ const addDataSchema = Joi.object ({
     quiz_title: Joi.string().required(),
     quiz_date: Joi.date().required(),
     duration: Joi.number().min(0).required(),
-    status: Joi.string().valid('COMPLETED', 'INCOMPLETED').required(),
+    status: Joi.string().valid('PUBLISHED', 'DRAFT').required(),
     difficulty: Joi.string().valid('EASY', 'MEDIUM', 'HARD').required(),
 })
 
@@ -13,7 +13,7 @@ const editDataSchema = Joi.object ({
     quiz_title: Joi.string().optional(),
     quiz_date: Joi.date().optional(),
     duration: Joi.number().min(0).optional(),
-    status: Joi.string().valid('COMPLETED', 'INCOMPLETED').optional(),
+    status: Joi.string().valid('PUBLISHED', 'DRAFT').optional(),
     difficulty: Joi.string().valid('EASY', 'MEDIUM', 'HARD').optional(),
 })
 

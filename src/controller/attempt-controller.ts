@@ -1,221 +1,280 @@
-import { Response, Request } from "express"
+import { Request, Response } from "express";
 import prisma from "../config/prisma";
+import {
+    ok, badRequest, notFound, unauthorized, forbidden, serverError,
+} from "../utils/response.util";
 
+// ─── XP Formula ───────────────────────────────────────────────────────────────
+const DIFFICULTY_MULTIPLIER: Record<string, number> = {
+    EASY:   1.0,
+    MEDIUM: 1.5,
+    HARD:   2.0,
+};
 
-export const startAttempt = async (request: Request, response: Response) => {
-    try {
-        const user = request.user
-        const { idQuiz } = request.params;
-        const id = Number(idQuiz)
-
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-            success: false,
-            message: "id must be a number"
-            })
-            return
-        }
-
-        if (!user) {
-                response.status(401).json({
-                success: false,
-                message: "unauthorized"
-            })
-            return
-        }
-
-        console.log(user)
-
-    
-        const quiz = await prisma.quiz.findUnique ({
-            where: { idQuiz: Number(idQuiz) }
-        })
-    
-        if (!quiz) {
-                response.status(404).json({
-                success: false,
-                message: "quiz not found"
-            })
-            return
-        }
-    
-        const existing = await prisma.attempt.findUnique ({
-            where: {
-                userId_quizId: {
-                    userId: user.idUser,
-                    quizId: Number(idQuiz)       
-                }
-            }
-        })
-    
-        if (existing) {
-                response.status(400).json({
-                    success: false,
-                    message: "quiz already started"
-            })
-            return
-        }
-    
-        const attempt = await prisma.attempt.create ({
-            data: {
-                userId: user.idUser,
-                quizId: Number(idQuiz)
-            }
-        })
-
-    
-        response.json({
-            attemptId: attempt.idAttempt,
-            start_time: attempt.start_time,
-            duration: quiz.duration
-        })
-    } catch (error) {
-            console.log(error)
-            response.status(500).json({
-            success: false,
-            message: "failed to start attempt"
-        })
-        return
-    }
+function calculateXP(score: number, difficulty: string): number {
+    const mult = DIFFICULTY_MULTIPLIER[difficulty] ?? 1.0;
+    return Math.round((score / 100) * 100 * mult); // max 200 XP untuk HARD 100%
 }
 
-export const submitAttempt = async (request: Request, response: Response) => {
+// ─── Update Streak ────────────────────────────────────────────────────────────
+async function updateStreak(userId: number): Promise<void> {
+    const today     = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const existing = await prisma.user_streak.findFirst({ where: { userId } });
+
+    if (!existing) {
+        await prisma.user_streak.create({
+            data: {
+                userId,
+                current_streak: 1,
+                longest_streak: 1,
+                last_activity:  new Date(),
+            },
+        });
+        return;
+    }
+
+    const lastDate = new Date(existing.last_activity);
+    lastDate.setHours(0, 0, 0, 0);
+
+    let newStreak = existing.current_streak;
+
+    if (lastDate.getTime() === today.getTime()) {
+        // Sudah aktif hari ini — tidak perlu update streak
+        return;
+    } else if (lastDate.getTime() === yesterday.getTime()) {
+        // Hari berturut-turut
+        newStreak += 1;
+    } else {
+        // Streak terputus
+        newStreak = 1;
+    }
+
+    await prisma.user_streak.update({
+        where: { userId },
+        data: {
+            current_streak: newStreak,
+            longest_streak: Math.max(newStreak, existing.longest_streak),
+            last_activity:  new Date(),
+        },
+    });
+}
+
+// ─── POST /quiz/:uuid/attempt/start ──────────────────────────────────────────
+// NOTE: Menggunakan :uuid (bukan :id integer). idAttempt tetap dikembalikan ke
+// frontend untuk keperluan autosave, tetapi submit tidak butuh id ini karena
+// backend menemukannya sendiri via userId + quizId.
+export const startAttempt = async (req: Request, res: Response): Promise<void> => {
     try {
+        const user = req.user;
+        if (!user?.idUser) { unauthorized(res); return; }
 
-        const user = request.user
-        const { idAttempt } = request.params;
-        const id = Number(idAttempt)
+        // ✅ Ambil dari :uuid (bukan :id / :quizUuid) — sesuai route yang baru
+        const quizUuid = req.params.uuid;
+        if (!quizUuid) { badRequest(res, "Quiz UUID wajib disertakan."); return; }
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-            success: false,
-            message: "id must be a number"
-            })
-            return
+        const quiz = await prisma.quiz.findFirst({ where: { uuid: String(quizUuid) } });
+        if (!quiz) { notFound(res, "Quiz tidak ditemukan."); return; }
+
+        // ── Cek retake policy ──────────────────────────────────────────────────
+        const existingAttempts = await prisma.attempt.findMany({
+            where: { userId: user.idUser, quizId: quiz.id },
+            orderBy: { created_at: "desc" },
+        });
+
+        // Jika ada attempt yang belum selesai → return untuk resume
+        const activeAttempt = existingAttempts.find(a => !a.isFinished);
+        if (activeAttempt) {
+            // Kembalikan saved_answers menggunakan questionsId & optionsId (integer, internal mapping)
+            // Frontend menggunakan ini untuk restore state lokal — TIDAK untuk ekspos ke URL
+            const savedAnswers = await prisma.answers.findMany({
+                where:  { attemptId: activeAttempt.id },
+                select: { questionsId: true, optionsId: true },
+            });
+
+            ok(res, "Quiz sedang berlangsung, melanjutkan attempt sebelumnya.", {
+                idAttempt:      activeAttempt.id,
+                start_time:     activeAttempt.start_time,
+                duration:       quiz.duration,
+                attempt_number: activeAttempt.attempt_number,
+                saved_answers:  Object.fromEntries(
+                    savedAnswers.map(a => [a.questionsId, a.optionsId]),
+                ),
+                is_resume: true,
+            });
+            return;
         }
 
-        if (!user) {
-                response.status(401).json({
-                success: false,
-                message: "unauthorized"
-            })
-            return
+        // Cek apakah masih boleh mencoba berdasarkan retake_policy
+        const finishedCount = existingAttempts.filter(a => a.isFinished).length;
+
+        if (quiz.retake_policy === "ONCE" && finishedCount >= 1) {
+            forbidden(res, "Quiz ini hanya boleh dikerjakan sekali.");
+            return;
         }
 
-        const attempt = await prisma.attempt.findUnique ({
-            where: { idAttempt: Number(idAttempt) },
-            include: {
-                quiz: true
+        if (quiz.retake_policy === "LIMITED" && quiz.max_attempts !== null) {
+            if (finishedCount >= quiz.max_attempts) {
+                forbidden(res, `Batas maksimum ${quiz.max_attempts} percobaan sudah tercapai.`);
+                return;
             }
-        })
-
-        if (!attempt) {
-            response.status(404).json({
-            success: false,
-            message: "attempt not found"
-            })
-            return
         }
+        // UNLIMITED → selalu boleh
 
-        if (attempt.userId !== user.idUser) {
-            response.status(403).json ({
-            message: "unauthorized"
-            })
-            return
-        }
+        // ── Buat attempt baru ──────────────────────────────────────────────────
+        const attempt = await prisma.attempt.create({
+            data: {
+                userId:         user.idUser,
+                quizId:         quiz.id,
+                attempt_number: finishedCount + 1,
+            },
+        });
 
-        if (attempt.finished_time) {
-            response.status(400).json({
-                success: false,
-                message: "attempt already submitted"
-            })
-            return
-        }
+        // Log aktivitas
+        await prisma.activity_log.create({
+            data: {
+                userId: user.idUser,
+                quizId: quiz.id,
+                action: "STARTED_QUIZ",
+            },
+        });
 
-        const now = new Date()
-        const started = attempt.start_time
-        const durationMs = attempt.quiz.duration * 60 * 1000
-        const elapsed = now.getTime() - started.getTime()
-        const late = elapsed > durationMs
+        ok(res, "Attempt dimulai.", {
+            idAttempt:      attempt.id,
+            start_time:     attempt.start_time,
+            duration:       quiz.duration,
+            attempt_number: attempt.attempt_number,
+            is_resume:      false,
+        });
+    } catch (err) {
+        console.error("[startAttempt]", err);
+        serverError(res);
+    }
+};
 
-        // ── Hitung skor dari tabel answers ──────────────────────────────
+// ─── POST /quiz/:uuid/attempt/submit ─────────────────────────────────────────
+// ✅ Backend menemukan attempt aktif via userId + quizUuid — tidak ada idAttempt di URL.
+export const submitAttempt = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const user = req.user;
+        if (!user?.idUser) { unauthorized(res); return; }
+
+        const quizUuid = req.params.uuid;
+        if (!quizUuid) { badRequest(res, "Quiz UUID wajib disertakan."); return; }
+
+        // ✅ Cari quiz dan attempt aktif secara internal — tidak ada integer ID dari frontend
+        const quiz = await prisma.quiz.findFirst({ where: { uuid: String(quizUuid) } });
+        if (!quiz) { notFound(res, "Quiz tidak ditemukan."); return; }
+
+        const attempt = await prisma.attempt.findFirst({
+            where:   { userId: user.idUser, quizId: quiz.id, isFinished: false },
+            include: { quiz: true },
+            orderBy: { created_at: "desc" },
+        });
+
+        if (!attempt)           { notFound(res, "Attempt aktif tidak ditemukan. Mulai quiz terlebih dahulu."); return; }
+        if (attempt.isFinished) { badRequest(res, "Attempt sudah disubmit."); return; }
+
+        const now        = new Date();
+        const started    = attempt.start_time;
+        const durMs      = attempt.quiz.duration * 60 * 1000;
+        const elapsed    = now.getTime() - started.getTime();
+        const late       = elapsed > durMs;
+        const durUsedMin = Math.floor(elapsed / 60000);
+
+        // ── Hitung skor ────────────────────────────────────────────────────────
         const userAnswers = await prisma.answers.findMany({
-            where: { userId: user.idUser, quizId: attempt.quizId },
+            where:   { attemptId: attempt.id },
             include: {
                 options:   { select: { is_correct: true } },
-                questions: { select: { poin: true } }
-            }
-        })
+                questions: { select: { poin: true } },
+            },
+        });
 
         const allQuestions = await prisma.questions.findMany({
-            where: { quizId: attempt.quizId, deleted_at: null }
-        })
+            where: { quizId: attempt.quizId, deleted_at: null },
+        });
 
-        let correct = 0
-        let wrong   = 0
-        let score   = 0
-
-        for (const answer of userAnswers) {
-            if (answer.options.is_correct) {
-                correct++
-                score += answer.questions.poin
-            } else {
-                wrong++
-            }
+        let correct = 0, wrong = 0, score = 0;
+        for (const ans of userAnswers) {
+            if (ans.options.is_correct) { correct++; score += ans.questions.poin; }
+            else                         wrong++;
         }
 
-        const total_questions = allQuestions.length
-        // ────────────────────────────────────────────────────────────────
+        const total_questions = allQuestions.length;
+        const skipped         = total_questions - userAnswers.length;
+        const maxScore        = allQuestions.reduce((a, q) => a + q.poin, 0);
+        const normalizedScore = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+        const accuracy        = (correct + wrong) > 0
+            ? Math.round((correct / (correct + wrong)) * 100)
+            : 0;
+        const xp_earned       = calculateXP(normalizedScore, attempt.quiz.difficulty);
 
-        // Update attempt → selesai
-        const attemptUpdated = await prisma.attempt.update ({
-            where: { idAttempt: Number(idAttempt) },
-            data: {
-                finished_time: now,
-                isFinished: true
-            }
-        })
+        // ── Update attempt ─────────────────────────────────────────────────────
+        await prisma.attempt.update({
+            where: { id: attempt.id },
+            data:  { finished_time: now, isFinished: true },
+        });
 
-        // Simpan skor ke tabel scores
-        const savedScore = await prisma.scores.create({
+        // ── Simpan skor ────────────────────────────────────────────────────────
+        await prisma.scores.create({
             data: {
                 uuid:            crypto.randomUUID(),
                 userId:          user.idUser,
                 quizId:          attempt.quizId,
+                attemptId:       attempt.id,
                 total_questions,
                 correct,
                 wrong,
-                score,
+                skipped,
+                score:           normalizedScore,
+                accuracy,
+                xp_earned,
                 start_time:      started,
-                finished_time:   now
-            }
-        })
+                finished_time:   now,
+                duration_used:   durUsedMin,
+            },
+        });
 
-            response.status(200).json({
-            success: true,
-            message: late ? "Quiz Submitted late" : "Quiz submitted on time",
+        // ── Update streak ──────────────────────────────────────────────────────
+        await updateStreak(user.idUser);
+
+        // ── Log aktivitas ──────────────────────────────────────────────────────
+        await prisma.activity_log.create({
+            data: {
+                userId: user.idUser,
+                quizId: attempt.quizId,
+                action: "COMPLETED_QUIZ",
+                score:  normalizedScore,
+            },
+        });
+
+        // ✅ Response tidak mengekspos idScore (integer) — frontend hanya butuh quiz_uuid untuk redirect
+        ok(res, late ? "Quiz submitted (terlambat)." : "Quiz submitted tepat waktu.", {
             late,
-            durationAllowed: attempt.quiz.duration,
-            timeUsedMinutes: Math.floor(elapsed / 60000),
-            scoreResult: {
+            duration_allowed_min: attempt.quiz.duration,
+            duration_used_min:    durUsedMin,
+            score_result: {
                 total_questions,
                 correct,
                 wrong,
-                unanswered: total_questions - userAnswers.length,
-                score,
-                idScore: savedScore.idScore
+                skipped,
+                score:    normalizedScore,
+                accuracy,
+                xp_earned,
             },
-            data: attemptUpdated
-        })
-        return
-
-
-    } catch (error) {
-        console.log(error)
-        response.status(500).json({
-            success: false,
-            message: "failed to Submit attempt"
-        })
-        return
+            quiz_uuid: attempt.quiz.uuid,
+        });
+    } catch (err) {
+        console.error("[submitAttempt]", err);
+        serverError(res);
     }
-}
+};
+
+
+
+
+

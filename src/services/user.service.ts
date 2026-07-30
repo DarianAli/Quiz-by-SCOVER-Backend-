@@ -12,3 +12,4 @@ export class UserService {
         return bcrypt.hash(raw, BCRYPT_SALT_ROUNDS);
     }
 }
+

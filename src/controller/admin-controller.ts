@@ -1,324 +1,212 @@
 import { Request, Response } from "express";
-import { v4 as uuidv4 } from "uuid"
-import bcrypt from "bcrypt"
+import { v4 as uuidv4 } from "uuid";
+import bcrypt from "bcrypt";
 import prisma from "../config/prisma";
+import { ok, created, badRequest, notFound, conflict, serverError } from "../utils/response.util";
 
-
-export const createAdmin = async (request: Request, response: Response) => {
+// ─── POST /internal/register-admin ────────────────────────────────────────────
+export const createAdmin = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { username, password, email, role, phone_number } = request.body;
-        const uuid = uuidv4()
-        const hashed = await bcrypt.hash(password, 10)
+        const { username, password, email, phone_number } = request.body;
+
+        if (!username || !password || !email) {
+            badRequest(response, "Username, password, and email are required.");
+            return;
+        }
 
         const existingAdmin = await prisma.admin.findFirst({
             where: {
                 OR: [
-                    {email},
-                    {username},
-                    {phone_number}
-                ]
-            }
-        })
+                    { email },
+                    { username },
+                    { phone_number: phone_number || "---" },
+                ],
+            },
+        });
 
         if (existingAdmin) {
-            response.status(409).json({
-                status: false,
-                message: `Admin with this email, username or phone number already exists.`
-            })
-            return
+            conflict(response, "Admin with this email, username, or phone number already exists.");
+            return;
         }
 
-        const createData = await prisma.admin.create({
+        const hashed = await bcrypt.hash(password, 10);
+        const newAdmin = await prisma.admin.create({
             data: {
-                uuid,
+                uuid: uuidv4(),
                 username,
                 password: hashed,
                 email,
-                role,
-                phone_number,
+                phone_number: phone_number || "",
             },
             select: {
                 uuid: true,
                 username: true,
                 email: true,
-                role: true,
-                phone_number: true
-            }
-        })
-
-        response.status(201).json({
-            status: true,
-            data: createData,
-            message: `Successfully create.`
-        })
-        return
-    } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-    }
-}
-
-export const getAdminProfile = async (request: Request, response: Response) => {
-    try {
-        const { idAdmin } = request.params;
-        const id = Number(idAdmin)
-
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
-        }
-
-        const findAdmin = await prisma.admin.findUnique({
-            where: { idAdmin: id },
-            select: {
-                username: true,
-                email: true,
-                role: true,
                 phone_number: true,
-            }
-        })
+            },
+        });
 
-        if (!findAdmin) {
-            response.status(404).json({
-                status: false,
-                message: `Admin not found.`
-            })
-            return
+        created(response, "Admin created successfully.", newAdmin);
+    } catch (error) {
+        console.error("[createAdmin]", error);
+        serverError(response);
+    }
+};
+
+// ─── GET /internal/get-admin/:uuid ───────────────────────────────────────────
+export const getAdminProfile = async (request: Request, response: Response): Promise<void> => {
+    try {
+        const { idAdmin } = request.params; // we'll treat it as UUID for backwards compat if needed, but better id
+
+        let admin;
+        if (!isNaN(Number(idAdmin))) {
+            admin = await prisma.admin.findFirst({ where: { id: Number(idAdmin) } });
+        } else {
+            admin = await prisma.admin.findFirst({ where: { uuid: String(idAdmin) } });
         }
 
-        response.status(200).json({
-            status: true,
-            data: findAdmin,
-            message: `Admin profile retrieved successfully.`
-        })
-        return
+        if (!admin) {
+            notFound(response, "Admin not found.");
+            return;
+        }
+
+        ok(response, "Admin profile retrieved successfully.", {
+            id: admin.id,
+            uuid: admin.uuid,
+            username: admin.username,
+            email: admin.email,
+            phone_number: admin.phone_number,
+        });
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[getAdminProfile]", error);
+        serverError(response);
     }
-}
+};
 
-export const updateAdmin = async (request: Request, response: Response) => {
+// ─── PUT /internal/update-admin/:uuid ────────────────────────────────────────
+export const updateAdmin = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idAdmin } = request.params;
-        const id = Number(idAdmin)
         const { username, email, phone_number } = request.body;
 
-        if(Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        let admin;
+        if (!isNaN(Number(idAdmin))) {
+            admin = await prisma.admin.findFirst({ where: { id: Number(idAdmin) } });
+        } else {
+            admin = await prisma.admin.findFirst({ where: { uuid: String(idAdmin) } });
         }
 
-        const findAdmin = await prisma.admin.findUnique({
-            where: {
-                idAdmin: id
-            }
-        })
-
-        if (!findAdmin) {
-            response.status(404).json({
-                status: false,
-                message: `Admin not found.`
-            })
-            return
+        if (!admin) {
+            notFound(response, "Admin not found.");
+            return;
         }
 
-        const findDuplicates = await prisma.admin.findFirst({
+        const duplicates = await prisma.admin.findFirst({
             where: {
                 OR: [
-                    {username},
-                    {email},
-                    {phone_number}
+                    { username: username || "---" },
+                    { email: email || "---" },
+                    { phone_number: phone_number || "---" },
                 ],
-                NOT: {
-                    idAdmin: id
-                }
-            }
-        })
+                NOT: { id: admin.id },
+            },
+        });
 
-        if (findDuplicates) {
-            if (email && findDuplicates.email === email) {
-                return response.status(409).json({
-                    status: false,
-                    message: `Email already used.`
-                })
-            }
-
-            if (username && findDuplicates.username === username) {
-                return response.status(409).json({
-                    status: false,
-                    message: `Username already used.`
-                })
-            }
-
-            if (phone_number && findDuplicates.phone_number === phone_number) {
-                return response.status(409).json({
-                    status: false,
-                    message: `Phone number already used.`
-                })
-            }
+        if (duplicates) {
+            conflict(response, "Email, username, or phone number already used by another admin.");
+            return;
         }
 
-
-        const updateData = await prisma.admin.update({
+        const updated = await prisma.admin.update({
+            where: { id: admin.id },
             data: {
-                username: username ?? findAdmin.username,
-                email: email ?? findAdmin.email,
-                phone_number: phone_number ?? findAdmin.phone_number,
+                username: username ?? admin.username,
+                email: email ?? admin.email,
+                phone_number: phone_number ?? admin.phone_number,
             },
             select: {
                 uuid: true,
                 username: true,
                 email: true,
-                role: true
+                phone_number: true,
             },
-            where: { 
-                idAdmin: id 
-            }
-        })
-        
-        response.status(200).json({
-            status: true,
-            data: updateData,
-            message: `Successfully updated the data.`
-        })
-        return
+        });
+
+        ok(response, "Successfully updated admin data.", updated);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,  
-            message: `Internal server error.`
-        })
-        return
+        console.error("[updateAdmin]", error);
+        serverError(response);
     }
-}
+};
 
-export const updatePassword = async (request: Request, response : Response) => {
+// ─── PUT /internal/password-admin/:uuid ──────────────────────────────────────
+export const updatePassword = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idAdmin } = request.params;
         const { password } = request.body;
-        const id = Number(idAdmin)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        if (!password) { badRequest(response, "Password is required."); return; }
+
+        let admin;
+        if (!isNaN(Number(idAdmin))) {
+            admin = await prisma.admin.findFirst({ where: { id: Number(idAdmin) } });
+        } else {
+            admin = await prisma.admin.findFirst({ where: { uuid: String(idAdmin) } });
         }
 
-        const findAdmin = await prisma.admin.findUnique({
-            where: { idAdmin: id }
-        })
-
-        if (!findAdmin) {
-            response.status(404).json({
-                status: false,
-                message: `Account not found.`
-            })
-            return
+        if (!admin) {
+            notFound(response, "Account not found.");
+            return;
         }
 
-        const isSame = await bcrypt.compare(password, findAdmin.password) 
-        
+        const isSame = await bcrypt.compare(password, admin.password);
         if (isSame) {
-            response.status(400).json({
-                status: false,
-                message: `Password cannot be the same as old password.`
-            })
-            return
+            badRequest(response, "Password cannot be the same as old password.");
+            return;
         }
 
-        const hashed = await bcrypt.hash(password, 10)
-
+        const hashed = await bcrypt.hash(password, 10);
         await prisma.admin.update({
-            data: {
-                password: hashed,
-            },
-            where: { idAdmin: id }
-        })
+            where: { id: admin.id },
+            data: { password: hashed },
+        });
 
-        response.status(200).json({
-            status: true,
-            message: `Successfully updated the password :)`
-        })
-        return
-
+        ok(response, "Successfully updated the password.");
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[updatePassword]", error);
+        serverError(response);
     }
-}
+};
 
-export const deleteAdmin = async (request: Request, response: Response) => {
+// ─── DELETE /internal/delete-admin/:uuid ─────────────────────────────────────
+export const deleteAdmin = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idAdmin } = request.params;
-        const id = Number(idAdmin)
 
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-            return
+        let admin;
+        if (!isNaN(Number(idAdmin))) {
+            admin = await prisma.admin.findFirst({ where: { id: Number(idAdmin) } });
+        } else {
+            admin = await prisma.admin.findFirst({ where: { uuid: String(idAdmin) } });
         }
 
-        const findAdmin = await prisma.admin.findUnique({
-            where: { idAdmin: id }
-        })
-
-        if (!findAdmin) {
-            response.status(404).json({
-                status: false,
-                message: `Admin not found.`
-            })
-            return
+        if (!admin) {
+            notFound(response, "Admin not found.");
+            return;
         }
 
-        const deleteAdmin  = await prisma.admin.delete({
-            where: { idAdmin: id },
+        const deleted = await prisma.admin.delete({
+            where: { id: admin.id },
             select: {
-                idAdmin: true,
+                id: true,
                 username: true,
                 email: true,
-                role: true
-            }
-        })
-        
-        response.status(200).json({
-            status: true,
-            data: deleteAdmin,
-            message: `successfully delete admin.`
-        })
-        return
-    } catch (error) {
-        console.error(error)
+            },
+        });
 
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        ok(response, "Successfully deleted admin.", deleted);
+    } catch (error) {
+        console.error("[deleteAdmin]", error);
+        serverError(response);
     }
-}
+};

@@ -9,7 +9,7 @@ app.use(express.json())
 
 app.post("/create", postLimiter, [verifyToken, verifyRole(["ADMIN"]), addData], createClass)
 app.put("/update/:idClass", updateLimiter, [verifyToken, verifyRole(["ADMIN"]),updateData], classUpdate)
-app.get("/allData", [verifyToken, verifyRole(["ADMIN", "TENTOR"])], getAllData)
+app.get("/all", [verifyToken, verifyRole(["ADMIN", "TENTOR"])], getAllData)
 app.get("/get/:idClass", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getById)
 app.delete("/delete/:idClass", deleteLimiter, [verifyToken, verifyRole(["ADMIN"])], deleteClass)
 

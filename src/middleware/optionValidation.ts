@@ -1,17 +1,19 @@
 import { Request, Response, NextFunction } from "express";
-import Joi from "joi";
+import Joi, { optional } from "joi";
 
 const addDataSchema = Joi.object({
     option_text: Joi.string().trim().min(1).max(5000).required(),
     option_image: Joi.string().uri().optional(),
     is_correct: Joi.boolean().required(),
-    questionId: Joi.number().required()
+    questionId: Joi.number().required(),
+    order_index: Joi.number().integer().min(0).optional()
 })
 
 const editDataSchema = Joi.object({
     option_text: Joi.string().trim().min(1).max(5000).optional(),
     option_image: Joi.string().uri().optional(),
     is_correct: Joi.boolean().optional(),
+    order_index: Joi.number().integer().min(0).optional()
 })
 
 export const verifyAddOption = (request : Request, response : Response, next : NextFunction) => {
