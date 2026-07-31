@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { toLatex } from "../utils/latex.util";
+import { toLatex } from "../utils/latex.util.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

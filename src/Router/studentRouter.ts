@@ -1,5 +1,5 @@
 import express from "express";
-import { verifyToken, verifyRole } from "../middleware/auth";
+import { verifyToken, verifyRole } from "../middleware/auth.js";
 import {
     studentDashboard,
     studentSubjects,
@@ -8,7 +8,7 @@ import {
     studentQuizResult,
     studentQuizReview,
     studentProgress,
-} from "../controller/student-controller";
+} from "../controller/student-controller.js";
 
 const router = express.Router();
 

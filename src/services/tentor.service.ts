@@ -1,4 +1,6 @@
-import prisma from "../config/prisma";
+import { PrismaClient, Role } from "@prisma/client";
+
+const prisma = new PrismaClient
 
 // ─── Tentor Dashboard ─────────────────────────────────────────────────────────
 
@@ -7,7 +9,7 @@ export async function getTentorDashboard(tentorId: number) {
         where: { id: tentorId, role: "TENTOR" },
         include: { class: { select: { id: true, class_name: true, class_program: true } } },
     });
-    if (!tentor) return null;
+    if (!tentor || !tentor.classId || !tentor.class) return null;
 
     const classId = tentor.classId;
 
@@ -22,9 +24,9 @@ export async function getTentorDashboard(tentorId: number) {
     // All quizzes for this class
     const subjectClasses = await prisma.subjectClass.findMany({
         where: { classId },
-        include: { subject: { include: { quizzes: { where: { deleted_at: null }, select: { id: true } } } } },
+        include: { subject: { include: { modules: { include: { quizzes: { where: { deleted_at: null }, select: { id: true } } } } } } },
     });
-    const classQuizIds = subjectClasses.flatMap(sc => sc.subject.quizzes.map(q => q.id));
+    const classQuizIds = subjectClasses.flatMap(sc => sc.subject?.modules.flatMap(m => m.quizzes.map(q => q.id)) || []);
 
     // Scores in this class
     const allScores = await prisma.scores.findMany({
@@ -53,7 +55,7 @@ export async function getTentorDashboard(tentorId: number) {
         where:   { userId: { in: studentIds }, quizId: { in: classQuizIds } },
         include: {
             user: { select: { uuid: true, full_name: true, userName: true, photoProfile: true } },
-            quiz: { select: { uuid: true, quiz_title: true, difficulty: true } },
+            quiz: { select: { uuid: true, quiz_title: true, difficulty: true, module: { select: { subject: { select: { subject_name: true } } } } } },
         },
         orderBy: { created_at: "desc" },
         take:    10,
@@ -75,10 +77,10 @@ export async function getTentorDashboard(tentorId: number) {
             total_quiz:       classQuizIds.length,
         },
         recent_submissions: recentScores.map(s => ({
-            student_uuid:    s.user.uuid,
-            student_name:    s.user.full_name || s.user.userName,
-            student_avatar:  s.user.photoProfile ? `/public/user_image/${s.user.photoProfile}` : null,
-            quiz_uuid:       s.quiz.uuid,
+            student_uuid:    s.user?.uuid ?? "",
+            student_name:    s.user?.full_name || s.user?.userName || "Deleted User",
+            student_avatar:  s.user?.photoProfile ? `/public/user_image/${s.user.photoProfile}` : null,
+            quiz_uuid:       s.quiz?.uuid ?? "",
             quiz_title:      s.quiz.quiz_title,
             difficulty:      s.quiz.difficulty,
             score:           s.score,
@@ -96,7 +98,7 @@ export async function getTentorStudentList(tentorId: number) {
         where:  { id: tentorId, role: "TENTOR" },
         select: { classId: true },
     });
-    if (!tentor) return null;
+    if (!tentor || !tentor.classId) return null;
 
     const students = await prisma.user.findMany({
         where:   { classId: tentor.classId, role: "STUDENT" },
@@ -116,9 +118,9 @@ export async function getTentorStudentList(tentorId: number) {
     // Class quiz count
     const subjectClasses = await prisma.subjectClass.findMany({
         where: { classId: tentor.classId },
-        include: { subject: { include: { quizzes: { where: { deleted_at: null }, select: { id: true } } } } },
+        include: { subject: { include: { modules: { include: { quizzes: { where: { deleted_at: null }, select: { id: true } } } } } } },
     });
-    const totalClassQuiz = subjectClasses.reduce((a, sc) => a + sc.subject.quizzes.length, 0);
+    const totalClassQuiz = subjectClasses.reduce((a, sc) => a + (sc.subject?.modules.reduce((ma, m) => ma + m.quizzes.length, 0) || 0), 0);
 
     const studentList = students.map(s => {
         const completedCount = new Set(s.scores.map((sc) => sc)).size; // approximate
@@ -189,7 +191,7 @@ export async function getTentorStudentList(tentorId: number) {
     });
 
     // Class overview
-    const allAvg   = studentList.map(s => s.average_score).filter(v => v > 0);
+    const allAvg   = studentList.map(s => s.averageScore).filter(v => v > 0);
     const classAvg = allAvg.length > 0 ? Math.round(allAvg.reduce((a, b) => a + b, 0) / allAvg.length) : 0;
 
     return {
@@ -216,7 +218,7 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
         where: { id: tentorId, role: "TENTOR" },
         select: { classId: true },
     });
-    if (!tentor) return null;
+    if (!tentor || !tentor.classId) return null;
 
     const student = await prisma.user.findFirst({
         where:   { uuid: studentUuid, classId: tentor.classId, role: "STUDENT" },
@@ -226,33 +228,38 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
             scores: {
                 include: {
                     quiz: {
-                        include: { subject: { select: { subject_name: true, uuid: true } } },
+                        include: { module: { include: { subject: { select: { subject_name: true, uuid: true } } } } },
                     },
                 },
                 orderBy: { created_at: "desc" },
             },
         },
     });
-    if (!student) return null;
+    if (!student || !student.class) return null;
 
     // ── Subject mastery ─────────────────────────────────────────────────────
     const subjectClasses = await prisma.subjectClass.findMany({
         where: { classId: tentor.classId },
         include: {
             subject: {
-                include: { quizzes: { where: { deleted_at: null }, select: { id: true } } },
+                include: { modules: { include: { quizzes: { where: { deleted_at: null }, select: { id: true } } } } },
             },
         },
     });
 
-    const subjectMasteryRaw = subjectClasses.map(sc => {
-        const qIds      = sc.subject.quizzes.map(q => q.id);
+    const allModules = subjectClasses.flatMap(sc => 
+        sc.subject?.modules.map(m => ({ ...m, subject_name: sc.subject.subject_name })) || []
+    );
+
+    const moduleMasteryRaw = allModules.map(m => {
+        const qIds      = m.quizzes.map(q => q.id);
         const subScores = student.scores.filter(s => qIds.includes(s.quizId));
         const avg       = subScores.length > 0
             ? Math.round(subScores.reduce((a, s) => a + s.score, 0) / subScores.length)
             : 0;
         return {
-            subject_name:  sc.subject.subject_name,
+            module_name:   m.module_name,
+            subject_name:  m.subject_name,
             average_score: avg,
             completed:     new Set(subScores.map(s => s.quizId)).size,
             total:         qIds.length,
@@ -262,14 +269,13 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
         };
     });
 
-    // Bentuk dipakai SubjectPerformance & StudentDetail (subject = nama asli, bukan enum tetap)
-    const subjectMastery = subjectMasteryRaw.map(sm => ({
-        subject: sm.subject_name,
-        label:   sm.subject_name,
-        mastery: sm.mastery,
+    const subjectMastery = moduleMasteryRaw.map(mm => ({
+        subject: mm.module_name,
+        label:   `${mm.subject_name} - ${mm.module_name}`,
+        mastery: mm.mastery,
     }));
 
-    const masterySorted = [...subjectMasteryRaw].sort((a, b) => b.average_score - a.average_score);
+    const masterySorted = [...moduleMasteryRaw].sort((a, b) => b.average_score - a.average_score);
     const strongest = masterySorted[0] ?? null;
     const weakest   = masterySorted[masterySorted.length - 1] ?? null;
 
@@ -348,7 +354,7 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
         ? Math.round(student.scores.reduce((a, s) => a + s.score, 0) / student.scores.length)
         : 0;
     const completedQuizCount = new Set(student.scores.map(s => s.quizId)).size;
-    const totalClassQuiz     = subjectMasteryRaw.reduce((a, sm) => a + sm.total, 0);
+    const totalClassQuiz     = moduleMasteryRaw.reduce((a, sm) => a + sm.total, 0);
     const displayName        = student.full_name || student.userName;
     const avatarInitials     = displayName
         .split(" ")
@@ -373,11 +379,11 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
                 ? Math.round((completedQuizCount / totalClassQuiz) * 100)
                 : 0,
             streakDays:             student.streak?.current_streak ?? 0,
-            lastActiveAt:           student.scores[0]?.created_at.toISOString() ?? new Date(0).toISOString(),
+            lastActiveAt:           student.scores[0]?.created_at?.toISOString() ?? new Date(0).toISOString(),
             atRisk:                 overallAvg > 0 && overallAvg < 60,
-            strongestSubject:       strongest?.subject_name ?? "",
+            strongestSubject:       strongest?.module_name ?? "",
             strongestSubjectScore:  strongest?.average_score ?? 0,
-            weakestSubject:         weakest?.subject_name ?? "",
+            weakestSubject:         weakest?.module_name ?? "",
             weakestSubjectScore:    weakest?.average_score ?? 0,
         },
         stats: {
@@ -392,7 +398,7 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
         recentQuizzes: student.scores.slice(0, 5).map(s => ({
             id:       s.uuid,
             quizName: s.quiz.quiz_title,
-            subject:  s.quiz.subject?.subject_name ?? "—",
+            subject:  s.quiz.module?.subject?.subject_name ?? "—",
             date:     s.created_at.toISOString(),
             score:    s.score,
             status:   "completed" as const,
@@ -401,3 +407,113 @@ export async function getTentorStudentDetail(tentorId: number, studentUuid: stri
     };
 }
 
+export async function getTentorSubjects(tentorId: number) {
+    const tentor = await prisma.user.findFirst({
+        where: {
+            id: tentorId,
+            role: Role.TENTOR,
+            deleted_at: null
+        },
+        select: {
+            classId: true
+        }
+    })
+
+    if (!tentor || !tentor.classId) return null;
+
+    const totalStudent = await prisma.user.count({
+        where: {
+            classId: tentor.classId,
+            role: Role.STUDENT,
+            deleted_at: null
+        }
+    })
+
+    const subjects = await prisma.subjectClass.findMany({
+        where: { classId: tentor.classId },
+        include: {
+            subject: {
+                include: {
+                    modules: {
+                        include: {
+                            quizzes: {
+                                where: { deleted_at: null },
+                                select: {
+                                    id: true,
+                                    status: true,
+                                    _count: {
+                                        select: {
+                                            questions: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    const students = await prisma.user.findMany({
+        where: { classId: tentor.classId, role: Role.STUDENT, deleted_at: null },
+        select: { id: true }
+    })
+    const studentIds = students.map(s => s.id)
+
+    // Fetch all scores for these students
+    const allScores = await prisma.scores.findMany({
+        where: { userId: { in: studentIds } },
+        orderBy: { created_at: "desc" }
+    })
+
+    // Helper to get latest score per (userId, quizId)
+    // We already ordered by desc, so the first one we see is the latest
+    const latestScores: typeof allScores = [];
+    const seen = new Set<string>();
+    for (const s of allScores) {
+        const key = `${s.userId}-${s.quizId}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            latestScores.push(s);
+        }
+    }
+    
+    return subjects.map(sc => {
+        const subject = sc.subject;
+        const allQuizzes = subject?.modules.flatMap(m => m.quizzes) || [];
+        const totalQuizzes = allQuizzes.length;
+        const publishedQuizzes = allQuizzes.filter(q => q.status === "PUBLISHED").length
+        const draftQuizzes = allQuizzes.filter(q => q.status === "DRAFT").length
+
+        // Menghitung akumulasi total soal pada seluruh quiz dalam project ini
+        const total_questions = allQuizzes.reduce((acc, q) => acc + q._count.questions, 0)
+        
+        // Menghitung average score (hanya dari kuis PUBLISHED, skor terbaru tiap siswa)
+        const publishedQuizIds = new Set(allQuizzes.filter(q => q.status === "PUBLISHED").map(q => q.id));
+        const subjectScores = latestScores.filter(s => publishedQuizIds.has(s.quizId));
+        const average_score = subjectScores.length > 0 
+            ? Math.round(subjectScores.reduce((acc, s) => acc + s.score, 0) / subjectScores.length)
+            : 0;
+
+        // Completion rate: (Total unique kuis yang dikerjakan oleh siswa) / (Total kuis PUBLISHED * Total siswa)
+        const expectedCompletions = publishedQuizzes * totalStudent;
+        const actualCompletions = subjectScores.length; // Karena latestScores sudah unik per (userId, quizId)
+        const completion_rate = expectedCompletions > 0
+            ? Math.round((actualCompletions / expectedCompletions) * 100)
+            : 0;
+
+        return {
+            id:     subject?.id ?? 0,
+            uuid:   subject?.uuid ?? "",
+            subject_name:   subject?.subject_name ?? "Deleted Subject",
+            student_count:  totalStudent,
+            total_quiz:     totalQuizzes,
+            published_quiz: publishedQuizzes,
+            draft_quiz:     draftQuizzes,
+            total_question: total_questions,
+            average_score:  average_score,
+            completion_rate: completion_rate
+        }
+    })
+}

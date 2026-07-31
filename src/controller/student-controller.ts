@@ -7,10 +7,10 @@ import {
     getStudentQuizResult,
     getStudentQuizReview,
     getStudentProgress,
-} from "../services/student.service";
+} from "../services/student.service.js";
 import {
     ok, notFound, unauthorized, serverError,
-} from "../utils/response.util";
+} from "../utils/response.util.js";
 
 // Semua endpoint ini membutuhkan req.user.idUser (STUDENT role)
 

@@ -1,22 +1,63 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 }      from "uuid";
-import prisma                 from "../config/prisma";
+import prisma                 from "../config/prisma.js";
 import {
     ok, created, badRequest, notFound, unauthorized, serverError, forbidden
-} from "../utils/response.util";
-import { getPagination, buildMeta } from "../utils/pagination.util";
+} from "../utils/response.util.js";
+import { getPagination, buildMeta } from "../utils/pagination.util.js";
 
 // ─── GET /quiz/all ────────────────────────────────────────────────────────────
 export const getAllQuiz = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { search = "", subjectId, difficulty, status } = req.query;
+        const user = req.user;
+        if (!user) { unauthorized(res); return; }
+
+        const { search = "", subjectId, moduleId, difficulty, status } = req.query;
         const { skip, take, page, limit } = getPagination(req.query);
 
-        const where: Record<string, unknown> = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const where: any = {
             quiz_title: { contains: String(search) },
         };
 
-        if (subjectId) where.subjectId = Number(subjectId);
+        // ─── TENTOR Ownership Validation ──────────────────────────────────────
+        let allowedSubjectIds: number[] | null = null;
+        if (user.role === "TENTOR") {
+            const tentor = await prisma.user.findFirst({
+                where: { id: user.idUser, role: "TENTOR" },
+                select: { classId: true }
+            });
+            if (tentor?.classId) {
+                const subjectClasses = await prisma.subjectClass.findMany({
+                    where: { classId: tentor.classId },
+                    select: { subjectId: true }
+                });
+                allowedSubjectIds = subjectClasses.map(sc => sc.subjectId);
+            } else {
+                allowedSubjectIds = []; // No class assigned = no access
+            }
+        }
+
+        // Apply module / subject filter taking allowedSubjectIds into account
+        if (moduleId) {
+            where.moduleId = Number(moduleId);
+            if (allowedSubjectIds !== null) {
+                where.module = {
+                    id: Number(moduleId),
+                    subjectId: { in: allowedSubjectIds }
+                };
+            }
+        } else if (subjectId) {
+            const reqSubjectId = Number(subjectId);
+            if (allowedSubjectIds !== null && !allowedSubjectIds.includes(reqSubjectId)) {
+                where.id = -1; // Unauthorized subject access
+            } else {
+                where.module = { subjectId: reqSubjectId };
+            }
+        } else if (allowedSubjectIds !== null) {
+            where.module = { subjectId: { in: allowedSubjectIds } };
+        }
+
         if (difficulty) where.difficulty = String(difficulty).toUpperCase();
         if (status)     where.status     = String(status).toUpperCase();
 
@@ -28,7 +69,7 @@ export const getAllQuiz = async (req: Request, res: Response): Promise<void> => 
                 take,
                 orderBy: { created_at: "desc" },
                 include: {
-                    subject:   { select: { uuid: true, subject_name: true } },
+                    module:    { include: { subject: { select: { uuid: true, subject_name: true } } } },
                     questions: { where: { deleted_at: null }, select: { id: true } },
                     _count:    { select: { attempts: true, scores: true } },
                 },
@@ -44,16 +85,16 @@ export const getAllQuiz = async (req: Request, res: Response): Promise<void> => 
             difficulty:      q.difficulty,
             retake_policy:   q.retake_policy,
             max_attempts:    q.max_attempts,
-            subject:         q.subject,
-            total_questions: q.questions.length,
-            total_attempts:  q._count.attempts,
+            subject:         q.module?.subject ?? null,
+            total_questions: q.questions?.length || 0,
+            total_attempts:  q._count?.attempts || 0,
             created_at:      q.created_at,
         }));
 
         ok(res, "Quizzes retrieved successfully.", data, buildMeta(total, page, limit));
     } catch (err) {
         console.error("[getAllQuiz]", err);
-        serverError(res);
+        serverError(res, "Failed to retrieve quizzes", err);
     }
 };
 
@@ -65,7 +106,7 @@ export const getQuizByUuid = async (req: Request, res: Response): Promise<void> 
         const quiz = await prisma.quiz.findFirst({
             where: { uuid: String(uuid) },
             include: {
-                subject:   { select: { uuid: true, subject_name: true } },
+                module:    { include: { subject: { select: { uuid: true, subject_name: true } } } },
                 questions: {
                     where:   { deleted_at: null },
                     orderBy: { order_index: "asc" },
@@ -95,7 +136,7 @@ export const createQuiz = async (req: Request, res: Response): Promise<void> => 
 
         const {
             quiz_title, quiz_date, duration, status, difficulty,
-            subjectId, retake_policy, max_attempts,
+            moduleId, retake_policy, max_attempts,
         } = req.body;
 
         if (!duration || Number(duration) <= 0) {
@@ -105,13 +146,18 @@ export const createQuiz = async (req: Request, res: Response): Promise<void> => 
         if (!quiz_title) { badRequest(res, "quiz_title wajib diisi."); return; }
 
         // Validate subject if provided
-        let resolvedSubjectId: number | null = null;
-        if (subjectId) {
-            const subject = await prisma.subject.findFirst({
-                where: { uuid: String(subjectId) }
-            })
-            if (!subject) { notFound(res, "Subject tidak ditemukan."); return; }
-            resolvedSubjectId = subject.id
+        let resolvedModuleId: number | null = null;
+        if (moduleId) {
+            // Check if moduleId is a number
+            if (!isNaN(Number(moduleId))) {
+                resolvedModuleId = Number(moduleId);
+            } else {
+                const mod = await prisma.module.findFirst({
+                    where: { uuid: String(moduleId) }
+                })
+                if (!mod) { notFound(res, "Module tidak ditemukan."); return; }
+                resolvedModuleId = mod.id
+            }
         }
 
         const VALID_STATUSES = ["DRAFT", "PUBLISHED"];
@@ -139,14 +185,14 @@ export const createQuiz = async (req: Request, res: Response): Promise<void> => 
                 duration:      Number(duration),
                 status:        quizStatus as "DRAFT" | "PUBLISHED",
                 difficulty:    difficulty  ?? "EASY",
-                subjectId:     resolvedSubjectId,
+                moduleId:      resolvedModuleId,
                 retake_policy: policy as "ONCE" | "LIMITED" | "UNLIMITED",
                 max_attempts:  policy === "LIMITED" ? Number(max_attempts) : null,
                 created_by:    user.idUser ?? null,
                 creator_role:  user.role   as "ADMIN" | "TENTOR" | "STUDENT",
             },
             include: {
-                subject: { select: { uuid: true, subject_name: true } },
+                module: { include: { subject: { select: { uuid: true, subject_name: true } } } },
             },
         });
 
@@ -162,7 +208,7 @@ export const updateQuiz = async (req: Request, res: Response): Promise<void> => 
     try {
         const { uuid } = req.params;
         const user = req.user;
-        const { quiz_title, quiz_date, duration, status, difficulty, subjectId, retake_policy, max_attempts } = req.body;
+        const { quiz_title, quiz_date, duration, status, difficulty, moduleId, retake_policy, max_attempts } = req.body;
 
         if (!user) {
             unauthorized(res, "Authentication required.");
@@ -200,13 +246,13 @@ export const updateQuiz = async (req: Request, res: Response): Promise<void> => 
                 duration:      duration    ? Number(duration)    : quiz.duration,
                 status:        quizStatus as "DRAFT" | "PUBLISHED",
                 difficulty:    difficulty  ?? quiz.difficulty,
-                subjectId:     subjectId !== undefined ? Number(subjectId) : quiz.subjectId,
+                moduleId:      moduleId !== undefined ? (!isNaN(Number(moduleId)) ? Number(moduleId) : (await prisma.module.findFirst({ where: { uuid: String(moduleId) } }))?.id ?? quiz.moduleId) : quiz.moduleId,
                 retake_policy: policy as "ONCE" | "LIMITED" | "UNLIMITED",
                 max_attempts:  policy === "LIMITED"
                     ? Number(max_attempts ?? quiz.max_attempts)
                     : null,
             },
-            include: { subject: { select: { uuid: true, subject_name: true } } },
+            include: { module: { include: { subject: { select: { uuid: true, subject_name: true } } } } },
         });
 
         ok(res, "Quiz berhasil diperbarui.", updated);

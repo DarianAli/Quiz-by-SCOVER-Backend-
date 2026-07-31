@@ -1,8 +1,8 @@
 import { Response, Request } from "express";
 import { v4 as uuidv4 } from "uuid";
-import prisma from "../config/prisma";
-import { ok, created, badRequest, notFound, conflict, serverError } from "../utils/response.util";
-import { getPagination, buildMeta } from "../utils/pagination.util";
+import prisma from "../config/prisma.js";
+import { ok, created, badRequest, notFound, conflict, serverError } from "../utils/response.util.js";
+import { getPagination, buildMeta } from "../utils/pagination.util.js";
 import { string } from "joi";
 
 // ─── POST /subject/add ───────────────────────────────────────────────────────
@@ -145,20 +145,25 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                 orderBy: { id: "asc" },
                 include: {
                     subjectClass: { include: { class: true } },
-                    quizzes: {
-                        where: { deleted_at: null },
-                        select: {
-                            uuid: true,
-                            quiz_title: true,
-                            quiz_date: true,
-                            duration: true,
-                            status: true,
-                            difficulty: true,
-                            retake_policy: true,
-                            max_attempts: true,
-                            created_at: true,
-                        },
-                        orderBy: { created_at: "desc" },
+                    modules: {
+                        include: {
+                            quizzes: {
+                                where: { deleted_at: null },
+                                select: {
+                                    id: true,
+                                    uuid: true,
+                                    quiz_title: true,
+                                    quiz_date: true,
+                                    duration: true,
+                                    status: true,
+                                    difficulty: true,
+                                    retake_policy: true,
+                                    max_attempts: true,
+                                    created_at: true,
+                                },
+                                orderBy: { created_at: "desc" },
+                            },
+                        }
                     },
                 },
             }),
@@ -172,6 +177,16 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                 select: { uuid: true, full_name: true, userName: true, photoProfile: true, role: true, classId: true },
             })
             : [];
+            
+        // Calculate scores
+        const allQuizIds = subjects.flatMap(s => s.modules.flatMap(m => m.quizzes).map(q => q.id));
+        const scoresAgg = allQuizIds.length > 0
+            ? await prisma.scores.groupBy({
+                by: ['quizId'],
+                _avg: { score: true, accuracy: true },
+            })
+            : [];
+        const scoreByQuiz = new Map(scoresAgg.map(sa => [sa.quizId, sa]));
 
         const tentorsByClass = new Map<number, typeof classMembers>()
         const studentByClass = new Map<number, typeof classMembers>()
@@ -204,11 +219,32 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                         studentUuids.add(st.uuid)
                     }
                 }
-                const totalQuiz = s.quizzes.length;
-                const annualGoal = s.annual_quiz_target ?? null
+                const allQuizzes = s.modules.flatMap(m => m.quizzes);
+                const totalQuiz = allQuizzes.length;
+                const publishedQuizzes = allQuizzes.filter(q => q.status === "PUBLISHED");
+                const completed_modules = publishedQuizzes.length;
+                const annualGoal = s.annual_quiz_target ?? 0
                 const curriculumProgress = annualGoal && annualGoal > 0
-                    ? Math.min(100, Math.round((totalQuiz / annualGoal) * 100))
-                    : null
+                    ? Math.min(100, Math.round((completed_modules / annualGoal) * 100))
+                    : 0
+                    
+                const assigned_class = isMyClass ? s.subjectClass.find(sc => sc.classId === currentUser?.classId)?.class.class_name : null;
+                const assigned_class_name = assigned_class || (s.subjectClass[0]?.class.class_name ?? "General");
+
+                let totalSubjectScore = 0;
+                let totalSubjectAccuracy = 0;
+                let scoreCount = 0;
+                
+                for (const q of allQuizzes) {
+                    const qAgg = scoreByQuiz.get(q.id);
+                    if (qAgg && qAgg._avg.score != null) {
+                       totalSubjectScore += qAgg._avg.score;
+                       totalSubjectAccuracy += qAgg._avg.accuracy || 0;
+                       scoreCount++;
+                    }
+                }
+                const average_score = scoreCount > 0 ? Math.round(totalSubjectScore / scoreCount) : 0;
+                const completion_rate = scoreCount > 0 ? Math.round(totalSubjectAccuracy / scoreCount) : 0;
 
                 return {
                     uuid:           s.uuid,
@@ -218,13 +254,17 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                         class_name:     sc.class.class_name,
                         class_program:  sc.class.class_program,
                     })),
-                    quizzes:        s.quizzes,
+                    quizzes:        allQuizzes,
                     total_quiz:     totalQuiz,
                     total_student:  studentUuids.size,
                     tentors:        Array.from(tentorMap.values()),
                     is_my_class:    isMyClass,
                     annual_quiz_target: annualGoal,
                     curriculum_progress: curriculumProgress,
+                    completed_modules: completed_modules,
+                    assigned_class_name: assigned_class_name,
+                    average_score: average_score,
+                    completion_rate: completion_rate,
                     created_at:     s.created_at,
                     updated_at:     s.updated_at,
                 }
@@ -247,20 +287,24 @@ export const getByID = async (request: Request, response: Response): Promise<voi
             where: { uuid: String(idSubject), deleted_at: null },
             include: {
                 subjectClass: { include: { class: true } },
-                quizzes: {
-                    where: { deleted_at: null },
-                    select: {
-                        uuid: true,
-                        quiz_title: true,
-                        quiz_date: true,
-                        duration: true,
-                        status: true,
-                        difficulty: true,
-                        retake_policy: true,
-                        max_attempts: true,
-                        created_at: true,
-                    },
-                    orderBy: { created_at: "desc" },
+                modules: {
+                    include: {
+                        quizzes: {
+                            where: { deleted_at: null },
+                            select: {
+                                uuid: true,
+                                quiz_title: true,
+                                quiz_date: true,
+                                duration: true,
+                                status: true,
+                                difficulty: true,
+                                retake_policy: true,
+                                max_attempts: true,
+                                created_at: true,
+                            },
+                            orderBy: { created_at: "desc" },
+                        },
+                    }
                 },
             },
         });
@@ -275,7 +319,7 @@ export const getByID = async (request: Request, response: Response): Promise<voi
                 class_name: sc.class.class_name,
                 class_program: sc.class.class_program,
             })),
-            quizzes:      subject.quizzes,
+            quizzes:      subject.modules.flatMap(m => m.quizzes),
             created_at:   subject.created_at,
             updated_at:   subject.updated_at,
         };

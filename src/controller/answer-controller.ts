@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import prisma from "../config/prisma";
-import { ok, badRequest, notFound, unauthorized, forbidden, serverError } from "../utils/response.util";
+import prisma from "../config/prisma.js";
+import { ok, badRequest, notFound, unauthorized, forbidden, serverError } from "../utils/response.util.js";
 
 // ─── POST /quiz/:uuid/answers ─────────────────────────────────────────────────
 // Body: { questionUuid, optionUuid }

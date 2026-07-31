@@ -56,4 +56,13 @@ export const conflict = (res: Response, message: string): Response =>
 export const serverError = (
     res: Response,
     message = "Internal server error.",
-): Response => res.status(500).json({ success: false, message });
+    error?: unknown
+): Response => {
+    return res.status(500).json({
+        success: false,
+        message,
+        ...(error !== undefined && { 
+            error: error instanceof Error ? error.message : String(error)
+        }),
+    });
+};

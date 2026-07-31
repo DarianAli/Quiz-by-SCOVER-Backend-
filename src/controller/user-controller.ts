@@ -2,10 +2,10 @@ import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcrypt";
 import fs from "fs";
-import prisma from "../config/prisma";
-import { BASE_URL } from "../global";
-import { ok, created, badRequest, notFound, conflict, forbidden, serverError } from "../utils/response.util";
-import { getPagination, buildMeta } from "../utils/pagination.util";
+import prisma from "../config/prisma.js";
+import { BASE_URL } from "../global.js";
+import { ok, created, badRequest, notFound, conflict, forbidden, serverError } from "../utils/response.util.js";
+import { getPagination, buildMeta } from "../utils/pagination.util.js";
 import {
     parseAndValidateFile,
     validateRows,
@@ -15,7 +15,7 @@ import {
     insertUsers,
     sendBulkUploadResponse,
     handleBulkUploadError,
-} from "../services/bulkUserUpload.service";
+} from "../services/bulkUserUpload.service.js";
 
 // ─── POST /user/bulk-upload ──────────────────────────────────────────────────
 export const bulkCreateUsers = async (request: Request, response: Response): Promise<void> => {

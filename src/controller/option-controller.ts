@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { BASE_URL } from "../global";
+import { BASE_URL } from "../global.js";
 import fs from "fs";
-import prisma from "../config/prisma";
-import { ok, created, badRequest, notFound, serverError } from "../utils/response.util";
+import prisma from "../config/prisma.js";
+import { ok, created, badRequest, notFound, serverError } from "../utils/response.util.js";
 
 // ─── POST /option/add ────────────────────────────────────────────────────────
 export const createOption = async (request: Request, response: Response): Promise<void> => {

@@ -1,4 +1,4 @@
-import prisma from "../config/prisma";
+import prisma from "../config/prisma.js";
 
 // ─── Class Leaderboard ────────────────────────────────────────────────────────
 // Ranking berdasarkan total score per class (per quiz atau per subject)
@@ -14,8 +14,10 @@ export async function getClassLeaderboard(
         ? { quizId }
         : {
               quiz: {
-                  subject: {
-                      subjectClass: { some: { classId } },
+                  module: {
+                      subject: {
+                          subjectClass: { some: { classId } },
+                      },
                   },
               },
           };

@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import prisma from "../config/prisma";
-import { ok, created, badRequest, notFound, serverError } from "../utils/response.util";
-import { getPagination, buildMeta } from "../utils/pagination.util";
+import prisma from "../config/prisma.js";
+import { ok, created, badRequest, notFound, serverError } from "../utils/response.util.js";
+import { getPagination, buildMeta } from "../utils/pagination.util.js";
 
 // ─── POST /class/add ─────────────────────────────────────────────────────────
 export const createClass = async (request: Request, response: Response): Promise<void> => {
