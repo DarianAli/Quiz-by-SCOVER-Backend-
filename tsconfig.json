@@ -10,7 +10,7 @@
     "moduleResolution": "node",
     "module": "commonjs",
     "target": "esnext",
-    "types": [],
+    "types": ["node"],
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
@@ -46,5 +46,5 @@
       "./src/types", "./node_modules/@types"
     ]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "prisma.config.ts"]
 }
