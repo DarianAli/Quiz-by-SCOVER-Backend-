@@ -1,14 +1,14 @@
 import express, { Request, Response, NextFunction } from "express";
-import { addData, profileData, updateData, updatePasswordDataUser, verifyLogin } from "../middleware/userValidation";
-import { phoneValidation } from "../validator/phoneValidator";
-import { createUser, deleteUser, getAllUser, getById, updatePasswordUser, updatePicture, updateUser } from "../controller/user-controller";
-import { deleteLimiter, passwordLimiter, postLimiter, registerLimiter, updateLimiter } from "../middleware/rateLimiter";
-import { verifyRole, verifyToken } from "../middleware/auth";
-import { onlyAdminCanChangeRole } from "../middleware/onlyAdminUpdate";
-import { verifyOwnershipOrAdmin } from "../middleware/validation";
-import { bulkCreateUsers } from "../controller/user-controller";
-import { uploadExcel } from "../middleware/uploadMidleware";
-import uploadUserFile from "../middleware/userUpload";
+import { addData, profileData, updateData, updatePasswordDataUser, verifyLogin } from "../middleware/userValidation.js";
+import { phoneValidation } from "../validator/phoneValidator.js";
+import { createUser, deleteUser, getAllUser, getById, updatePasswordUser, updatePicture, updateUser } from "../controller/user-controller.js";
+import { deleteLimiter, passwordLimiter, postLimiter, registerLimiter, updateLimiter } from "../middleware/rateLimiter.js";
+import { verifyRole, verifyToken } from "../middleware/auth.js";
+import { onlyAdminCanChangeRole } from "../middleware/onlyAdminUpdate.js";
+import { verifyOwnershipOrAdmin } from "../middleware/validation.js";
+import { bulkCreateUsers } from "../controller/user-controller.js";
+import { uploadExcel } from "../middleware/uploadMidleware.js";
+import uploadUserFile from "../middleware/userUpload.js";
 
 const app = express()
 app.use(express.json())

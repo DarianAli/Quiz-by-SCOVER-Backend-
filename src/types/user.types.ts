@@ -1,5 +1,5 @@
-import { role } from "../../generated/prisma/client";
-import { UserRow } from "../utils/userRow.validator";
+import { role } from "../../generated/prisma/client.js";
+import { UserRow } from "../utils/userRow.validator.js";
 
 export interface UploadError {
     row:    number;

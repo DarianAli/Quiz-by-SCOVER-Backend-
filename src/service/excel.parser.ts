@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { UserRow } from "../utils/userRow.validator";
+import { UserRow } from "../utils/userRow.validator.js";
 
 const COLUMN_MAP: Record<string, keyof UserRow> = {
     username:             "userName",

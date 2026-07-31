@@ -1,10 +1,10 @@
 import express from "express";
-import { deleteLimiter, passwordLimiter, registerLimiter, updateLimiter } from "../middleware/rateLimiter";
-import { createAdmin, deleteAdmin, getAdminProfile, updateAdmin, updatePassword } from "../controller/admin-controller";
-import { addData, updateData, updatePass } from "../middleware/adminValidation";
-import { internalAuth } from "../middleware/internal";
-import { verifyRole, verifyToken } from "../middleware/auth";
-import { phoneValidation } from "../validator/phoneValidator";
+import { deleteLimiter, passwordLimiter, registerLimiter, updateLimiter } from "../middleware/rateLimiter.js";
+import { createAdmin, deleteAdmin, getAdminProfile, updateAdmin, updatePassword } from "../controller/admin-controller.js";
+import { addData, updateData, updatePass } from "../middleware/adminValidation.js";
+import { internalAuth } from "../middleware/internal.js";
+import { verifyRole, verifyToken } from "../middleware/auth.js";
+import { phoneValidation } from "../validator/phoneValidator.js";
 
 const app = express()
 app.use(express.json())

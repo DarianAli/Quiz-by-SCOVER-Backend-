@@ -1,4 +1,5 @@
-import prisma from "../config/prisma";
+import prisma from "../config/prisma.js";
+import { calculateAverageScore } from "./student-statistics.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,14 +21,14 @@ export async function getStudentDashboard(userId: number) {
             streak: true,
         },
     });
-    if (!user) return null;
+    if (!user || !user.classId || !user.class) return null;
 
     // ── All quiz attempts ──────────────────────────────────────────────────────
     const allScores = await prisma.scores.findMany({
         where: { userId },
         include: {
             quiz: {
-                include: { subject: { select: { subject_name: true } } },
+                include: { module: { include: { subject: { select: { subject_name: true } } } } },
             },
             attempt: { select: { start_time: true, finished_time: true } },
         },
@@ -40,7 +41,7 @@ export async function getStudentDashboard(userId: number) {
         include: {
             quiz: {
                 include: {
-                    subject: { select: { subject_name: true } },
+                    module: { include: { subject: { select: { subject_name: true } } } },
                     questions: { where: { deleted_at: null }, select: { id: true } },
                 },
             },
@@ -55,10 +56,14 @@ export async function getStudentDashboard(userId: number) {
         include: {
             subject: {
                 include: {
-                    quizzes: {
-                        where: { deleted_at: null },
-                        select: { id: true },
-                    },
+                    modules: {
+                        include: {
+                            quizzes: {
+                                where: { deleted_at: null },
+                                select: { id: true },
+                            },
+                        }
+                    }
                 },
             },
         },
@@ -66,9 +71,7 @@ export async function getStudentDashboard(userId: number) {
 
     // ── Score aggregations ─────────────────────────────────────────────────────
     const totalScoreSum = allScores.reduce((acc, s) => acc + s.score, 0);
-    const avgScore      = allScores.length > 0
-        ? Math.round(totalScoreSum / allScores.length)
-        : 0;
+    const avgScore      = await calculateAverageScore(userId, user.classId);
 
     const totalCorrect  = allScores.reduce((acc, s) => acc + s.correct, 0);
     const totalAnswered = allScores.reduce(
@@ -84,7 +87,7 @@ export async function getStudentDashboard(userId: number) {
     // Completed quiz IDs (unique)
     const completedQuizIds  = new Set(allScores.map(s => s.quizId));
     const totalQuizForClass = subjectClasses.reduce(
-        (acc, sc) => acc + sc.subject.quizzes.length,
+        (acc, sc) => acc + sc.subject.modules.flatMap(m => m.quizzes).length,
         0,
     );
 
@@ -142,25 +145,39 @@ export async function getStudentDashboard(userId: number) {
     }
 
     // ── Subject mastery ────────────────────────────────────────────────────────
-    const subjectMastery = subjectClasses.map(sc => {
-        const subjectQuizIds = sc.subject.quizzes.map(q => q.id);
+    const subjectMastery = await Promise.all(subjectClasses.map(async sc => {
+        const allQuizzes = sc.subject.modules.flatMap(m => m.quizzes);
+        const subjectQuizIds = allQuizzes.map(q => q.id);
         const subjectScores  = allScores.filter(s => subjectQuizIds.includes(s.quizId));
         const completedCount = new Set(subjectScores.map(s => s.quizId)).size;
-        const avgSc          = subjectScores.length > 0
-            ? Math.round(subjectScores.reduce((a, s) => a + s.score, 0) / subjectScores.length)
-            : 0;
+        const avgSc          = await calculateAverageScore(userId, user.classId, sc.subject.uuid);
 
         return {
             subject_name:       sc.subject.subject_name,
-            mastery_percentage: sc.subject.quizzes.length > 0
-                ? Math.round((completedCount / sc.subject.quizzes.length) * 100)
+            mastery_percentage: allQuizzes.length > 0
+                ? Math.round((completedCount / allQuizzes.length) * 100)
                 : 0,
             completed: completedCount,
-            total:     sc.subject.quizzes.length,
+            total:     allQuizzes.length,
             average_score: avgSc,
         };
-    });
+    }));
 
+    const moduleProgress = subjectClasses.flatMap(sc => {
+        return sc.subject.modules.map(m => {
+            const moduleQuizIds = m.quizzes.map(q => q.id);
+            const moduleScores = allScores.filter(s => moduleQuizIds.includes(s.quizId));
+            const completedCount = new Set(moduleScores.map(s => s.quizId)).size;
+            return {
+                module_uuid: m.uuid,
+                module_name: m.module_name,
+                subject_name: sc.subject.subject_name,
+                completed: completedCount,
+                total: moduleQuizIds.length,
+                progress_percentage: moduleQuizIds.length > 0 ? Math.round((completedCount / moduleQuizIds.length) * 100) : 0,
+            };
+        });
+    });
     // ── Strongest/weakest subject ──────────────────────────────────────────────
     const sorted    = [...subjectMastery].sort((a, b) => b.average_score - a.average_score);
     const strongest = sorted[0] ?? null;
@@ -170,7 +187,7 @@ export async function getStudentDashboard(userId: number) {
     const classScores = await prisma.scores.groupBy({
         by: ["userId"],
         where: {
-            quiz: { subject: { subjectClass: { some: { classId: user.classId } } } },
+            quiz: { module: { subject: { subjectClass: { some: { classId: user.classId } } } } },
         },
         _sum: { score: true },
         orderBy: { _sum: { score: "desc" } },
@@ -184,7 +201,7 @@ export async function getStudentDashboard(userId: number) {
         score_uuid:      s.uuid,
         quiz_uuid:       s.quiz.uuid,
         quiz_title:      s.quiz.quiz_title,
-        subject_name:    s.quiz.subject?.subject_name ?? "—",
+        subject_name:    s.quiz.module?.subject?.subject_name ?? "—",
         score:           s.score,
         correct:         s.correct,
         wrong:           s.wrong,
@@ -197,7 +214,7 @@ export async function getStudentDashboard(userId: number) {
     // ── Activity log ──────────────────────────────────────────────────────────
     const activities = await prisma.activity_log.findMany({
         where:   { userId },
-        include: { quiz: { select: { uuid: true, quiz_title: true, subject: { select: { subject_name: true } } } } },
+        include: { quiz: { select: { uuid: true, quiz_title: true, module: { select: { subject: { select: { subject_name: true } } } } } } },
         orderBy: { created_at: "desc" },
         take: 10,
     });
@@ -206,7 +223,7 @@ export async function getStudentDashboard(userId: number) {
         id:           String(a.id),
         action:       a.action,
         quiz_title:   a.quiz.quiz_title,
-        subject_name: a.quiz.subject?.subject_name ?? "—",
+        subject_name: a.quiz.module?.subject?.subject_name ?? "—",
         score:        a.score ?? undefined,
         created_at:   a.created_at.toISOString(),
     }));
@@ -242,16 +259,17 @@ export async function getStudentDashboard(userId: number) {
         in_progress_quizzes: inProgressAttempts.map(a => ({
             quiz_uuid:       a.quiz.uuid,
             quiz_title:      a.quiz.quiz_title,
-            subject_name:    a.quiz.subject?.subject_name ?? "—",
+            subject_name:    a.quiz.module?.subject?.subject_name ?? "—",
             difficulty:      a.quiz.difficulty,
             duration:        a.quiz.duration,
             total_questions: a.quiz.questions.length,
             start_time:      a.start_time.toISOString(),
             attempt_id:      a.id,
         })),
-        subject_mastery:  subjectMastery,
-        weekly_scores:    weeklyScores,
+        subject_mastery:   subjectMastery,
+        weekly_scores:     weeklyScores,
         recent_activities: recentActivities,
+        module_progress:   moduleProgress,
     };
 }
 
@@ -262,43 +280,45 @@ export async function getStudentSubjects(userId: number) {
         where: { id: userId },
         select: { classId: true },
     });
-    if (!user) return null;
+    if (!user || !user.classId) return null;
 
     const subjectClasses = await prisma.subjectClass.findMany({
         where: { classId: user.classId },
         include: {
             subject: {
                 include: {
-                    quizzes: {
-                        where: { deleted_at: null },
-                        select: {
-                            id: true,
-                            duration: true,
-                            scores: { where: { userId }, select: { score: true, quizId: true } },
-                        },
-                    },
+                    modules: {
+                        include: {
+                            quizzes: {
+                                where: { deleted_at: null },
+                                select: {
+                                    id: true,
+                                    duration: true,
+                                    scores: { where: { userId }, select: { score: true, quizId: true } },
+                                },
+                            },
+                        }
+                    }
                 },
             },
         },
     });
 
-    return subjectClasses.map(sc => {
+    return Promise.all(subjectClasses.map(async sc => {
         const subject = sc.subject;
-        const totalQuiz = subject.quizzes.length;
+        const allQuizzes = subject.modules.flatMap(m => m.quizzes);
+        const totalQuiz = allQuizzes.length;
 
         const completedQuizIds = new Set(
-            subject.quizzes
+            allQuizzes
                 .filter(q => q.scores.some(s => s.quizId === q.id))
                 .map(q => q.id),
         );
         const completedQuiz = completedQuizIds.size;
 
-        const scores = subject.quizzes.flatMap(q => q.scores.map(s => s.score));
-        const avgScore = scores.length > 0
-            ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-            : 0;
+        const avgScore = await calculateAverageScore(userId, user.classId, subject.uuid);
 
-        const estimatedTime = subject.quizzes.reduce((acc, q) => acc + q.duration, 0);
+        const estimatedTime = allQuizzes.reduce((acc, q) => acc + q.duration, 0);
 
         return {
             uuid:                  subject.uuid,
@@ -311,7 +331,7 @@ export async function getStudentSubjects(userId: number) {
                 : 0,
             estimated_time: estimatedTime,
         };
-    });
+    }));
 }
 
 // ─── Student Subject Detail (with Quiz List) ──────────────────────────────────
@@ -321,33 +341,39 @@ export async function getStudentSubjectDetail(userId: number, subjectUuid: strin
         where: { id: userId },
         select: { classId: true },
     });
-    if (!user) return null;
+    if (!user || !user.classId) return null;
 
     const subject = await prisma.subject.findFirst({
         where: { uuid: subjectUuid, subjectClass: { some: { classId: user.classId } } },
         include: {
-            quizzes: {
-                where: { deleted_at: null, status: "PUBLISHED" },
+            modules: {
                 include: {
-                    questions: { where: { deleted_at: null }, select: { id: true } },
-                    attempts: {
-                        where: { userId },
-                        orderBy: { created_at: "desc" },
-                        take: 1,
+                    quizzes: {
+                        where: { deleted_at: null, status: "PUBLISHED" },
+                        include: {
+                            questions: { where: { deleted_at: null }, select: { id: true } },
+                            attempts: {
+                                where: { userId },
+                                orderBy: { created_at: "desc" },
+                                take: 1,
+                            },
+                            scores: {
+                                where: { userId },
+                                orderBy: { created_at: "desc" },
+                                take: 1,
+                            },
+                        },
                     },
-                    scores: {
-                        where: { userId },
-                        orderBy: { created_at: "desc" },
-                        take: 1,
-                    },
-                },
-            },
+                }
+            }
         },
     });
 
     if (!subject) return null;
 
-    const quizzes = subject.quizzes.map(q => {
+    const allQuizzes = subject.modules.flatMap(m => m.quizzes);
+
+    const quizzes = allQuizzes.map(q => {
         const lastAttempt = q.attempts[0] ?? null;
         const lastScore   = q.scores[0]   ?? null;
 
@@ -371,26 +397,55 @@ export async function getStudentSubjectDetail(userId: number, subjectUuid: strin
         };
     });
 
+    const modules = subject.modules.map(m => {
+        const moduleQuizzes = m.quizzes.map(q => {
+            const lastAttempt = q.attempts[0] ?? null;
+            const lastScore   = q.scores[0]   ?? null;
+
+            let studentStatus: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" = "NOT_STARTED";
+            if (lastAttempt?.isFinished) studentStatus = "COMPLETED";
+            else if (lastAttempt && !lastAttempt.isFinished) studentStatus = "IN_PROGRESS";
+
+            return {
+                uuid:            q.uuid,
+                quiz_title:      q.quiz_title,
+                difficulty:      q.difficulty,
+                duration:        q.duration,
+                total_questions: q.questions.length,
+                quiz_date:       q.quiz_date.toISOString(),
+                student_status:  studentStatus,
+                last_score:      lastScore?.score       ?? null,
+                last_correct:    lastScore?.correct     ?? null,
+                last_wrong:      lastScore?.wrong       ?? null,
+                attempt_id:      lastAttempt?.id        ?? null,
+                is_finished:     lastAttempt?.isFinished ?? false,
+            };
+        });
+        return {
+            uuid: m.uuid,
+            module_name: m.module_name,
+            description: m.description,
+            order_index: m.order_index,
+            quizzes: moduleQuizzes,
+        };
+    });
+
     const completedCount = quizzes.filter(q => q.student_status === "COMPLETED").length;
-    const scores         = subject.quizzes
-        .flatMap(q => q.scores)
-        .map(s => s.score);
-    const avgScore       = scores.length > 0
-        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-        : 0;
-    const estimatedTime  = subject.quizzes.reduce((a, q) => a + q.duration, 0);
+    const avgScore       = await calculateAverageScore(userId, user.classId, subject.uuid);
+    const estimatedTime  = allQuizzes.reduce((a, q) => a + q.duration, 0);
 
     return {
         uuid:                  subject.uuid,
         subject_name:          subject.subject_name,
-        total_quiz:            subject.quizzes.length,
+        total_quiz:            allQuizzes.length,
         completed_quiz:        completedCount,
         average_score:         avgScore,
-        completion_percentage: subject.quizzes.length > 0
-            ? Math.round((completedCount / subject.quizzes.length) * 100)
+        completion_percentage: allQuizzes.length > 0
+            ? Math.round((completedCount / allQuizzes.length) * 100)
             : 0,
         estimated_time: estimatedTime,
         quizzes,
+        modules,
     };
 }
 
@@ -400,7 +455,7 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
     const quiz = await prisma.quiz.findFirst({
         where: { uuid: quizUuid, deleted_at: null },
         include: {
-            subject: { select: { subject_name: true } },
+            module: { include: { subject: { select: { subject_name: true } } } },
             questions: {
                 where: { deleted_at: null },
                 orderBy: { order_index: "asc" },
@@ -446,7 +501,7 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
         duration:        quiz.duration,
         retake_policy:   quiz.retake_policy,
         total_questions: quiz.questions.length,
-        subject_name:    quiz.subject?.subject_name ?? "—",
+        subject_name:    quiz.module?.subject?.subject_name ?? "—",
         questions: quiz.questions.map(q => ({
             idQuestion:     q.id,
             uuid:           q.uuid,
@@ -476,7 +531,7 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
 export async function getStudentQuizResult(userId: number, quizUuid: string) {
     const quiz = await prisma.quiz.findFirst({
         where: { uuid: quizUuid, deleted_at: null },
-        include: { subject: { select: { subject_name: true } } },
+        include: { module: { include: { subject: { select: { subject_name: true } } } } },
     });
     if (!quiz) return null;
 
@@ -536,7 +591,7 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
     return {
         quiz_uuid:    quiz.uuid,
         quiz_title:   quiz.quiz_title,
-        subject_name: quiz.subject?.subject_name ?? "—",
+        subject_name: quiz.module?.subject?.subject_name ?? "—",
         difficulty:   quiz.difficulty,
         score: {
             uuid:            score.uuid,
@@ -561,7 +616,7 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
 export async function getStudentQuizReview(userId: number, quizUuid: string) {
     const quiz = await prisma.quiz.findFirst({
         where: { uuid: quizUuid, deleted_at: null },
-        include: { subject: { select: { subject_name: true } } },
+        include: { module: { include: { subject: { select: { subject_name: true } } } } },
     });
     if (!quiz) return null;
 
@@ -635,7 +690,7 @@ export async function getStudentQuizReview(userId: number, quizUuid: string) {
     return {
         quiz_uuid:      quiz.uuid,
         quiz_title:     quiz.quiz_title,
-        subject_name:   quiz.subject?.subject_name ?? "—",
+        subject_name:   quiz.module?.subject?.subject_name ?? "—",
         difficulty:     quiz.difficulty,
         total_questions: questions.length,
         correct_count:  correctCount,
@@ -653,14 +708,14 @@ export async function getStudentProgress(userId: number) {
         where: { id: userId },
         include: { streak: true, class: { select: { class_name: true } } },
     });
-    if (!user) return null;
+    if (!user || !user.classId || !user.class) return null;
 
     const allScores = await prisma.scores.findMany({
         where: { userId },
         include: {
             quiz: {
                 include: {
-                    subject:   { select: { subject_name: true, uuid: true } },
+                    module: { include: { subject:   { select: { subject_name: true, uuid: true } } } },
                     questions: { where: { deleted_at: null }, select: { id: true } },
                 },
             },
@@ -668,31 +723,36 @@ export async function getStudentProgress(userId: number) {
         orderBy: { created_at: "asc" },
     });
 
+    const avgScore = await calculateAverageScore(userId, user.classId);
+
     // ── Subject progress ───────────────────────────────────────────────────────
     const subjectClasses = await prisma.subjectClass.findMany({
         where: { classId: user.classId },
         include: {
             subject: {
                 include: {
-                    quizzes: {
-                        where: { deleted_at: null },
-                        select: { id: true },
-                    },
+                    modules: {
+                        include: {
+                            quizzes: {
+                                where: { deleted_at: null },
+                                select: { id: true },
+                            },
+                        }
+                    }
                 },
             },
         },
     });
 
-    const subjectProgress = subjectClasses.map(sc => {
+    const subjectProgress = await Promise.all(subjectClasses.map(async sc => {
         const s           = sc.subject;
-        const quizIds     = s.quizzes.map(q => q.id);
+        const allQuizzes  = s.modules.flatMap(m => m.quizzes);
+        const quizIds     = allQuizzes.map(q => q.id);
         const subScores   = allScores.filter(sc2 => quizIds.includes(sc2.quizId));
         const completed   = new Set(subScores.map(s2 => s2.quizId)).size;
-        const avgScore    = subScores.length > 0
-            ? Math.round(subScores.reduce((a, b) => a + b.score, 0) / subScores.length)
-            : 0;
-        const mastery     = s.quizzes.length > 0
-            ? Math.round((completed / s.quizzes.length) * 100)
+        const avgScore    = await calculateAverageScore(userId, user.classId, s.uuid);
+        const mastery     = allQuizzes.length > 0
+            ? Math.round((completed / allQuizzes.length) * 100)
             : 0;
 
         // Trend: compare last 3 vs previous 3
@@ -712,13 +772,13 @@ export async function getStudentProgress(userId: number) {
 
         return {
             subject_name:       s.subject_name,
-            total_quiz:         s.quizzes.length,
+            total_quiz:         allQuizzes.length,
             completed_quiz:     completed,
             average_score:      avgScore,
             mastery_percentage: mastery,
             trend,
         };
-    });
+    }));
 
     // ── Monthly performance (last 6 months) ───────────────────────────────────
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -784,7 +844,7 @@ export async function getStudentProgress(userId: number) {
 
     // ── Overall ────────────────────────────────────────────────────────────────
     const totalQuizForClass = subjectClasses.reduce(
-        (a, sc) => a + sc.subject.quizzes.length,
+        (a, sc) => a + sc.subject.modules.flatMap(m => m.quizzes).length,
         0,
     );
     const completedQuizIds  = new Set(allScores.map(s => s.quizId)).size;
@@ -793,9 +853,7 @@ export async function getStudentProgress(userId: number) {
 
     return {
         overall: {
-            average_score:    allScores.length > 0
-                ? Math.round(allScores.reduce((a, s) => a + s.score, 0) / allScores.length)
-                : 0,
+            average_score:    avgScore,
             learning_streak:  user.streak?.current_streak ?? 0,
             completed_quiz:   completedQuizIds,
             total_quiz:       totalQuizForClass,

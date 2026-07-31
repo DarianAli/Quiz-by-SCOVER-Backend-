@@ -1,7 +1,7 @@
 import express from "express"
-import { submitAnswer, getMyProgress, getQuizReview, getQuizDifficulty } from "../controller/answer-controller"
-import { verifyToken, verifyRole } from "../middleware/auth"
-import { answerLimiter } from "../middleware/rateLimiter"
+import { submitAnswer, getMyProgress, getQuizReview, getQuizDifficulty } from "../controller/answer-controller.js"
+import { verifyToken, verifyRole } from "../middleware/auth.js"
+import { answerLimiter } from "../middleware/rateLimiter.js"
 
 // mergeParams: true — supaya :uuid dari parent route terbaca di sini
 const router = express.Router({ mergeParams: true })

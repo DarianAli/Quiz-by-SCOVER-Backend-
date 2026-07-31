@@ -1,7 +1,7 @@
 import express from "express";
 import multer  from "multer";
-import { verifyToken, verifyRole } from "../middleware/auth";
-import { previewImport, confirmImport } from "../controller/import-controller";
+import { verifyToken, verifyRole } from "../middleware/auth.js";
+import { previewImport, confirmImport } from "../controller/import-controller.js";
 
 const router  = express.Router();
 

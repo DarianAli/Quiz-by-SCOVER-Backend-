@@ -1,13 +1,13 @@
 import express from "express";
 import {
     getAllQuiz, getQuizByUuid, createQuiz, updateQuiz, deleteQuiz, 
-} from "../controller/quiz-controller";
-import { startAttempt, submitAttempt } from "../controller/attempt-controller";
+} from "../controller/quiz-controller.js";
+import { startAttempt, submitAttempt } from "../controller/attempt-controller.js";
 import {
     deleteLimiter, postLimiter, updateLimiter, attemptLimiter,
-} from "../middleware/rateLimiter";
-import { verifyRole, verifyToken } from "../middleware/auth";
-import answerRouter from "./answerRouter";
+} from "../middleware/rateLimiter.js";
+import { verifyRole, verifyToken } from "../middleware/auth.js";
+import answerRouter from "./answerRouter.js";
 
 const router = express.Router();
 

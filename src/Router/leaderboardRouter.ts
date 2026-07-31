@@ -1,6 +1,6 @@
 import express from "express";
-import { verifyToken, verifyRole } from "../middleware/auth";
-import { getMyClassLeaderboard, getLeaderboardByClass } from "../controller/leaderboard-controller";
+import { verifyToken, verifyRole } from "../middleware/auth.js";
+import { getMyClassLeaderboard, getLeaderboardByClass } from "../controller/leaderboard-controller.js";
 
 const router = express.Router();
 

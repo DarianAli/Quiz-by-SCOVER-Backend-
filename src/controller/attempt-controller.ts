@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import prisma from "../config/prisma";
+import prisma from "../config/prisma.js";
 import {
     ok, badRequest, notFound, unauthorized, forbidden, serverError,
-} from "../utils/response.util";
+} from "../utils/response.util.js";
 
 // ─── XP Formula ───────────────────────────────────────────────────────────────
 const DIFFICULTY_MULTIPLIER: Record<string, number> = {

@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import Jwt from "jsonwebtoken";
-import prisma from "../config/prisma";
-import { ok, unauthorized, notFound, serverError } from "../utils/response.util";
+import prisma from "../config/prisma.js";
+import { ok, unauthorized, notFound, serverError } from "../utils/response.util.js";
 
 // ─── POST /auth/login ─────────────────────────────────────────────────────────
 export const login = async (request: Request, response: Response): Promise<void> => {
@@ -53,7 +53,7 @@ export const login = async (request: Request, response: Response): Promise<void>
         // ── Try regular user ───────────────────────────────────────────────────
         const user = await prisma.user.findFirst({
             where: { email },
-            include: { class: { select: { class_name: true, class_program: true } } },
+            include: { class: { select: { class_name: true, class_program: true, uuid: true } } },
         });
 
         if (!user) {
@@ -67,7 +67,7 @@ export const login = async (request: Request, response: Response): Promise<void>
             return;
         }
 
-        const payload = { idUser: user.id, email: user.email, userName: user.userName, role: user.role };
+        const payload = { idUser: user.id, email: user.email, userName: user.userName, role: user.role, class: user.classId };
         const token   = Jwt.sign(payload, SECRET, { expiresIn: "1d" });
 
         const cookieOptions = {
@@ -93,6 +93,7 @@ export const login = async (request: Request, response: Response): Promise<void>
                 ? `${process.env.CORS_ORIGIN ?? "http://localhost:3000"}/public/user_image/${user.photoProfile}`
                 : null,
             class_name:    user.class?.class_name ?? null,
+            class_id: user.class?.uuid ?? null,
             class_program: user.class?.class_program ?? null,
         });
     } catch (error) {

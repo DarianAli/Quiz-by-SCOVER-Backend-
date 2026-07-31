@@ -3,8 +3,9 @@ import {
     getTentorDashboard,
     getTentorStudentList,
     getTentorStudentDetail,
-} from "../services/tentor.service";
-import { ok, unauthorized, notFound, serverError } from "../utils/response.util";
+    getTentorSubjects,
+} from "../services/tentor.service.js";
+import { ok, unauthorized, notFound, serverError } from "../utils/response.util.js";
 
 const getUid = (req: Request): number | null => req.user?.idUser ?? null;
 
@@ -20,7 +21,7 @@ export const tentorDashboard = async (req: Request, res: Response): Promise<void
         ok(res, "Dashboard retrieved successfully.", data);
     } catch (err) {
         console.error("[tentorDashboard]", err);
-        serverError(res);
+        serverError(res, "Failed to load dashboard.", err);
     }
 };
 
@@ -36,7 +37,7 @@ export const tentorStudents = async (req: Request, res: Response): Promise<void>
         ok(res, "Student list retrieved successfully.", data);
     } catch (err) {
         console.error("[tentorStudents]", err);
-        serverError(res);
+        serverError(res, "Failed to load student list.", err);
     }
 };
 
@@ -53,9 +54,31 @@ export const tentorStudentDetail = async (req: Request, res: Response): Promise<
         ok(res, "Student detail retrieved successfully.", data);
     } catch (err) {
         console.error("[tentorStudentDetail]", err);
-        serverError(res);
+        serverError(res, "Failed to load student detail.", err);
     }
 };
+
+// GET Tentor subjects
+export const tentorSubject = async(req: Request, res: Response): Promise<void> => {
+    try {
+        const uid = getUid(req);
+        if (!uid) {
+            unauthorized(res)
+            return
+        }
+
+        const data = await getTentorSubjects(uid)
+        if (!data) {
+            notFound(res, "Tentor or assigned class not found.")
+            return
+        }
+
+        ok(res, "Tentor subjects retrieved successfully.", data)
+    } catch (error) {
+        console.error("[tentorSubject]", error)
+        serverError(res, "Failed to load subjects.", error)
+    }
+}
 
 
 
