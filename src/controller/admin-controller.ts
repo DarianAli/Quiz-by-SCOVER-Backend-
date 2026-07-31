@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcrypt";
-import prisma from "../config/prisma";
-import { ok, created, badRequest, notFound, conflict, serverError } from "../utils/response.util";
+import prisma from "../config/prisma.js";
+import { ok, created, badRequest, notFound, conflict, serverError } from "../utils/response.util.js";
 
 // ─── POST /internal/register-admin ────────────────────────────────────────────
 export const createAdmin = async (request: Request, response: Response): Promise<void> => {

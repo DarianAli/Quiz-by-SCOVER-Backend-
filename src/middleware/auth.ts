@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import Jwt from "jsonwebtoken";
-import { JwtPayload } from "../types/express";
+import { JwtPayload } from "../types/express.js";
 
 // ─── Verify JWT Token ─────────────────────────────────────────────────────────
 export const verifyToken = (request: Request, response: Response, next: NextFunction): void => {

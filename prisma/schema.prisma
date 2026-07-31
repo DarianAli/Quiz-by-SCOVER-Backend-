@@ -109,16 +109,17 @@ model classes {
 }
 
 model subject {
-  id                 Int       @id @default(autoincrement())
-  uuid               String    @unique @default(uuid())
-  subject_name       String    @unique
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
-  deleted_at         DateTime? // soft delete
+  id           Int       @id @default(autoincrement())
+  uuid         String    @unique @default(uuid())
+  subject_name String    @unique
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime? // soft delete
   annual_quiz_target Int? // target jumlah quiz per tahun
 
   subjectClass subjectClass[]
-  quizzes      quiz[]
+
+  modules      module[]
 
   @@index([deleted_at])
   @@map("subjects")
@@ -133,6 +134,26 @@ model subjectClass {
 
   @@id([subjectId, classId])
   @@map("subject_classes")
+}
+
+model module {
+  id           Int       @id @default(autoincrement())
+  uuid         String    @unique @default(uuid())
+  module_name  String
+  description  String    @default("") @db.Text
+  order_index  Int       @default(0)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime? // soft delete
+
+  subjectId    Int
+  subject      subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  quizzes      quiz[]
+
+  @@index([subjectId])
+  @@index([deleted_at])
+  @@map("modules")
 }
 
 model quiz {
@@ -155,8 +176,8 @@ model quiz {
   updated_at   DateTime  @updatedAt
   deleted_at   DateTime? // soft delete
 
-  subject   subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  subjectId Int?
+  module    module?  @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  moduleId  Int?
 
   scores       scores[]
   answers      answers[]
@@ -164,7 +185,7 @@ model quiz {
   attempts     attempt[]
   activityLogs activity_log[]
 
-  @@index([subjectId])
+  @@index([moduleId])
   @@index([deleted_at])
   @@map("quizzes")
 }

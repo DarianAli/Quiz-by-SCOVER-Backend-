@@ -1,11 +1,11 @@
 import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { role } from "../../generated/prisma/client";
-import { parseExcelBuffer } from "../service/excel.parser";
-import { UserRow, validateUserRow } from "../utils/userRow.validator";
-import { UploadError, UserInsertPayload, ValidatedRow } from "../types/user.types";
-import { UserService } from "./user.service";
-import prisma from "../config/prisma";
+import { role } from "../../generated/prisma/client.js";
+import { parseExcelBuffer } from "../service/excel.parser.js";
+import { UserRow, validateUserRow } from "../utils/userRow.validator.js";
+import { UploadError, UserInsertPayload, ValidatedRow } from "../types/user.types.js";
+import { UserService } from "./user.service.js";
+import prisma from "../config/prisma.js";
 
 
 const VALID_ROLES = Object.values(role);

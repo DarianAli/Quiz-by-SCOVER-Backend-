@@ -6,22 +6,23 @@ import cors         from "cors";
 import morgan       from "morgan";
 import path         from "path";
 
-import { UPLOAD_DIR } from "./global";
-import { globalLimiter } from "./middleware/rateLimiter";
+import { UPLOAD_DIR } from "./global.js";
+import { globalLimiter } from "./middleware/rateLimiter.js";
 
 // ─── Route imports ────────────────────────────────────────────────────────────
-import authRoute       from "./Router/authRouter";
-import userRoute       from "./Router/userRoute";
-import classRoute      from "./Router/classRouter";
-import adminRoute      from "./Router/admin.internal";
-import quizRoute       from "./Router/quizRouter";
-import subjectRoute    from "./Router/subjectRoute";
-import questionRouter  from "./Router/questionRouter";
-import optionRouter    from "./Router/optionRouter";
-import studentRouter   from "./Router/studentRouter";
-import leaderboardRouter from "./Router/leaderboardRouter";
-import tentorRouter    from "./Router/tentorRouter";
-import importRouter    from "./Router/importRouter";
+import authRoute       from "./Router/authRouter.js";
+import userRoute       from "./Router/userRoute.js";
+import classRoute      from "./Router/classRouter.js";
+import adminRoute      from "./Router/admin.internal.js";
+import quizRoute       from "./Router/quizRouter.js";
+import subjectRoute    from "./Router/subjectRoute.js";
+import questionRouter  from "./Router/questionRouter.js";
+import optionRouter    from "./Router/optionRouter.js";
+import studentRouter   from "./Router/studentRouter.js";
+import leaderboardRouter from "./Router/leaderboardRouter.js";
+import tentorRouter    from "./Router/tentorRouter.js";
+import importRouter    from "./Router/importRouter.js";
+import moduleRoute     from "./Router/moduleRoute.js";
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT) || 3000;
@@ -71,6 +72,7 @@ app.use("/student",     studentRouter);      // student-specific APIs
 app.use("/leaderboard", leaderboardRouter);  // class leaderboard
 app.use("/tentor",      tentorRouter);       // tentor-specific APIs
 app.use("/import",      importRouter);       // bulk import soal
+app.use("/module",      moduleRoute);        // module management
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
 app.use("/public", express.static(UPLOAD_DIR));
@@ -81,7 +83,26 @@ app.get("/health", (_req, res) => res.json({ status: "ok", timestamp: new Date()
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found." }));
 
+// ─── Global Error Handler ─────────────────────────────────────────────────────
+// Catches any error thrown from route handlers / middleware via next(err)
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("[GlobalErrorHandler]", err.message, err.stack);
+    res.status(500).json({
+        success: false,
+        message: "Internal server error.",
+        error:   process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
+// Guard against unhandled rejections/exceptions that would crash the process
+process.on("uncaughtException", (err) => {
+    console.error("[UNCAUGHT EXCEPTION]", err.message, err.stack);
+});
+process.on("unhandledRejection", (reason) => {
+    console.error("[UNHANDLED REJECTION]", reason);
+});
+
 app.listen(PORT, () => {
     console.log(`✅  Server running at http://localhost:${PORT}  [${process.env.NODE_ENV ?? "development"}]`);
 });

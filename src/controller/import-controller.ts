@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { parseExcelQuestions, parseWordQuestions, ParsedQuestion } from "../services/quiz-import.service";
-import { ok, badRequest, notFound, serverError } from "../utils/response.util";
-import prisma from "../config/prisma";
+import { parseExcelQuestions, parseWordQuestions, ParsedQuestion } from "../services/quiz-import.service.js";
+import { ok, badRequest, notFound, serverError } from "../utils/response.util.js";
+import prisma from "../config/prisma.js";
 
 // ─── Helper: convert ParsedQuestion → DB rows ────────────────────────────────
 

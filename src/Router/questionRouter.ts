@@ -1,9 +1,9 @@
 import express from "express"
-import { createQuestion, updateQuestion, getAllQuestion, getQuestionById, deleteQuestion } from "../controller/question-controller"
-import { verifyRole, verifyToken } from "../middleware/auth"
-import { postLimiter, updateLimiter, deleteLimiter } from "../middleware/rateLimiter"
-import { verifyAddQuestion, verifyEditQuestion } from "../middleware/questionValidation"
-import uploadQuestionFile from "../middleware/questionUpload"
+import { createQuestion, updateQuestion, getAllQuestion, getQuestionById, deleteQuestion } from "../controller/question-controller.js"
+import { verifyRole, verifyToken } from "../middleware/auth.js"
+import { postLimiter, updateLimiter, deleteLimiter } from "../middleware/rateLimiter.js"
+import { verifyAddQuestion, verifyEditQuestion } from "../middleware/questionValidation.js"
+import uploadQuestionFile from "../middleware/questionUpload.js"
 
 const app = express()
 app.use(express.json({ strict: false }))

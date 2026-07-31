@@ -1,8 +1,8 @@
 import express from "express"
-import { verifyRole, verifyToken } from "../middleware/auth"
-import { assignDataValidation, createDataValidation, updateDataValidation } from "../middleware/subjectValidation"
-import { assignSubject, createSubject, deleteSubject, getAllSubject, getByID, getSubjectByUser, updateSubject } from "../controller/subject-controller"
-import { deleteLimiter, postLimiter, updateLimiter } from "../middleware/rateLimiter"
+import { verifyRole, verifyToken } from "../middleware/auth.js"
+import { assignDataValidation, createDataValidation, updateDataValidation } from "../middleware/subjectValidation.js"
+import { assignSubject, createSubject, deleteSubject, getAllSubject, getByID, getSubjectByUser, updateSubject } from "../controller/subject-controller.js"
+import { deleteLimiter, postLimiter, updateLimiter } from "../middleware/rateLimiter.js"
 
 const app = express()
 app.use(express.json())

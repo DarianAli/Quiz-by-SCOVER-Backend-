@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import { getClassLeaderboard } from "../services/leaderboard.service";
-import { ok, unauthorized, serverError, badRequest } from "../utils/response.util";
-import prisma from "../config/prisma";
+import { getClassLeaderboard } from "../services/leaderboard.service.js";
+import { ok, unauthorized, serverError, badRequest } from "../utils/response.util.js";
+import prisma from "../config/prisma.js";
 
 // GET /leaderboard — leaderboard kelas student yang sedang login
 export const getMyClassLeaderboard = async (req: Request, res: Response): Promise<void> => {
@@ -18,7 +18,7 @@ export const getMyClassLeaderboard = async (req: Request, res: Response): Promis
             select: { classId: true },
         });
 
-        if (!student) { unauthorized(res, "Student not found."); return; }
+        if (!student || !student.classId) { unauthorized(res, "Student not found or has no class."); return; }
 
         const data = await getClassLeaderboard(student.classId, user.idUser, quizId, limit);
 
