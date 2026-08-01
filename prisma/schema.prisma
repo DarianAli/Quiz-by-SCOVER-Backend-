@@ -22,6 +22,7 @@ enum Role {
 enum ClassProgram {
   UTBK
   SKD
+  GENERAL
 }
 
 enum QuizStatus {

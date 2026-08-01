@@ -8,11 +8,10 @@
 ALTER TABLE `quizzes` DROP FOREIGN KEY `quizzes_subjectId_fkey`;
 
 -- DropIndex
-DROP INDEX `quizzes_subjectId_idx` ON `quizzes`;
+ALTER TABLE `quizzes` DROP INDEX `quizzes_subjectId_idx`;
 
 -- AlterTable
 ALTER TABLE `quizzes` DROP COLUMN `subjectId`;
 
 -- RedefineIndex
 CREATE INDEX `quizzes_moduleId_idx` ON `quizzes`(`moduleId`);
-DROP INDEX `quizzes_moduleId_fkey` ON `quizzes`;

@@ -9,20 +9,32 @@ import { string } from "joi";
 // classId (body) sekarang berupa array of class UUIDs, bukan numeric id
 export const createSubject = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { subject_name, classId } = request.body;
+        const { subject_name, classId, classIds, annual_quiz_target } = request.body;
         if (!subject_name) { badRequest(response, "subject_name is required."); return; }
 
+        // Accept either classIds or classId from the request body
+        const rawClasses = classIds ?? classId;
         let classRecords: { id: number }[] = [];
-        if (classId !== undefined) {
-            if (!Array.isArray(classId) || classId.length === 0) {
-                badRequest(response, "classId must be a non-empty array."); return;
+
+        if (rawClasses !== undefined) {
+            if (!Array.isArray(rawClasses) || rawClasses.length === 0) {
+                badRequest(response, "classIds must be a non-empty array."); return;
             }
 
-            const uniqueUuids = [...new Set(classId.map(String))];
-            classRecords = await prisma.classes.findMany({ where: { uuid: { in: uniqueUuids } } });
+            const numericIds = rawClasses.map((v: any) => Number(v)).filter((n: number) => !isNaN(n));
+            const stringUuids = rawClasses.map(String);
 
-            if (classRecords.length !== uniqueUuids.length) {
-                notFound(response, "One or more classId not found."); return;
+            classRecords = await prisma.classes.findMany({
+                where: {
+                    OR: [
+                        { id: { in: numericIds } },
+                        { uuid: { in: stringUuids } }
+                    ]
+                }
+            });
+
+            if (classRecords.length !== rawClasses.length) {
+                notFound(response, "One or more classIds not found."); return;
             }
         }
 
@@ -35,9 +47,10 @@ export const createSubject = async (request: Request, response: Response): Promi
             data: {
                 uuid: uuidv4(),
                 subject_name,
-                ...(classId && {
+                annual_quiz_target: annual_quiz_target ? Number(annual_quiz_target) : 40,
+                ...(classRecords.length > 0 && {
                     subjectClass: {
-                        create: classRecords.map(c => ({ classId: c.id })),
+                        create: classRecords.map((c: { id: number }) => ({ classId: c.id })),
                     },
                 }),
             },
@@ -47,15 +60,16 @@ export const createSubject = async (request: Request, response: Response): Promi
         });
 
         const result = {
-            uuid:         newSubject.uuid,
+            uuid: newSubject.uuid,
             subject_name: newSubject.subject_name,
-            classes:      newSubject.subjectClass.map(sc => ({
+            annual_quiz_target: newSubject.annual_quiz_target,
+            classes: newSubject.subjectClass.map(sc => ({
                 uuid: sc.class.uuid,
                 class_name: sc.class.class_name,
                 class_program: sc.class.class_program,
             })),
-            created_at:   newSubject.created_at,
-            updated_at:   newSubject.updated_at,
+            created_at: newSubject.created_at,
+            updated_at: newSubject.updated_at,
         };
 
         created(response, "Successfully created subject.", result);
@@ -107,9 +121,9 @@ export const assignSubject = async (request: Request, response: Response): Promi
         });
 
         const result = {
-            uuid:         updatedSubject!.uuid,
+            uuid: updatedSubject!.uuid,
             subject_name: updatedSubject!.subject_name,
-            classes:      updatedSubject!.subjectClass.map(sc => ({
+            classes: updatedSubject!.subjectClass.map(sc => ({
                 uuid: sc.class.uuid,
                 class_name: sc.class.class_name,
                 class_program: sc.class.class_program,
@@ -177,7 +191,7 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                 select: { uuid: true, full_name: true, userName: true, photoProfile: true, role: true, classId: true },
             })
             : [];
-            
+
         // Calculate scores
         const allQuizIds = subjects.flatMap(s => s.modules.flatMap(m => m.quizzes).map(q => q.id));
         const scoresAgg = allQuizIds.length > 0
@@ -204,70 +218,71 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                 && currentUser?.classId != null
                 && classIds.includes(currentUser.classId)
 
-                // Dedupe tentor/murid lintas kelas yang sama sama memakai subject ini
-                const tentorMap = new Map<string, { uuid: string; name: string; photo: string | null }>()
-                const studentUuids = new Set<string>()
-                for (const cid of classIds) {
-                    for (const t of tentorsByClass.get(cid) ?? []) {
-                        tentorMap.set(t.uuid, {
-                            uuid: t.uuid,
-                            name: t.full_name || t.userName,
-                            photo: t.photoProfile ? `/public/user_image/${t.photoProfile}` : null,
-                        })
-                    }
-                    for (const st of studentByClass.get(cid) ?? []) {
-                        studentUuids.add(st.uuid)
-                    }
+            // Dedupe tentor/murid lintas kelas yang sama sama memakai subject ini
+            const tentorMap = new Map<string, { uuid: string; name: string; photo: string | null }>()
+            const studentUuids = new Set<string>()
+            for (const cid of classIds) {
+                for (const t of tentorsByClass.get(cid) ?? []) {
+                    tentorMap.set(t.uuid, {
+                        uuid: t.uuid,
+                        name: t.full_name || t.userName,
+                        photo: t.photoProfile ? `/public/user_image/${t.photoProfile}` : null,
+                    })
                 }
-                const allQuizzes = s.modules.flatMap(m => m.quizzes);
-                const totalQuiz = allQuizzes.length;
-                const publishedQuizzes = allQuizzes.filter(q => q.status === "PUBLISHED");
-                const completed_modules = publishedQuizzes.length;
-                const annualGoal = s.annual_quiz_target ?? 0
-                const curriculumProgress = annualGoal && annualGoal > 0
-                    ? Math.min(100, Math.round((completed_modules / annualGoal) * 100))
-                    : 0
-                    
-                const assigned_class = isMyClass ? s.subjectClass.find(sc => sc.classId === currentUser?.classId)?.class.class_name : null;
-                const assigned_class_name = assigned_class || (s.subjectClass[0]?.class.class_name ?? "General");
+                for (const st of studentByClass.get(cid) ?? []) {
+                    studentUuids.add(st.uuid)
+                }
+            }
+            const allQuizzes = s.modules.flatMap(m => m.quizzes);
+            const totalQuiz = allQuizzes.length;
+            const publishedQuizzes = allQuizzes.filter(q => q.status === "PUBLISHED");
+            const completed_modules = publishedQuizzes.length;
+            const annualGoal = s.annual_quiz_target ?? 0
+            const curriculumProgress = annualGoal && annualGoal > 0
+                ? Math.min(100, Math.round((completed_modules / annualGoal) * 100))
+                : 0
 
-                let totalSubjectScore = 0;
-                let totalSubjectAccuracy = 0;
-                let scoreCount = 0;
-                
-                for (const q of allQuizzes) {
-                    const qAgg = scoreByQuiz.get(q.id);
-                    if (qAgg && qAgg._avg.score != null) {
-                       totalSubjectScore += qAgg._avg.score;
-                       totalSubjectAccuracy += qAgg._avg.accuracy || 0;
-                       scoreCount++;
-                    }
-                }
-                const average_score = scoreCount > 0 ? Math.round(totalSubjectScore / scoreCount) : 0;
-                const completion_rate = scoreCount > 0 ? Math.round(totalSubjectAccuracy / scoreCount) : 0;
+            const assigned_class = isMyClass ? s.subjectClass.find(sc => sc.classId === currentUser?.classId)?.class.class_name : null;
+            const assigned_class_name = assigned_class || (s.subjectClass[0]?.class.class_name ?? "General");
 
-                return {
-                    uuid:           s.uuid,
-                    subject_name:   s.subject_name,
-                    classes:        s.subjectClass.map(sc => ({
-                        uuid:           sc.class.uuid,
-                        class_name:     sc.class.class_name,
-                        class_program:  sc.class.class_program,
-                    })),
-                    quizzes:        allQuizzes,
-                    total_quiz:     totalQuiz,
-                    total_student:  studentUuids.size,
-                    tentors:        Array.from(tentorMap.values()),
-                    is_my_class:    isMyClass,
-                    annual_quiz_target: annualGoal,
-                    curriculum_progress: curriculumProgress,
-                    completed_modules: completed_modules,
-                    assigned_class_name: assigned_class_name,
-                    average_score: average_score,
-                    completion_rate: completion_rate,
-                    created_at:     s.created_at,
-                    updated_at:     s.updated_at,
+            let totalSubjectScore = 0;
+            let totalSubjectAccuracy = 0;
+            let scoreCount = 0;
+
+            for (const q of allQuizzes) {
+                const qAgg = scoreByQuiz.get(q.id);
+                if (qAgg && qAgg._avg.score != null) {
+                    totalSubjectScore += qAgg._avg.score;
+                    totalSubjectAccuracy += qAgg._avg.accuracy || 0;
+                    scoreCount++;
                 }
+            }
+            const average_score = scoreCount > 0 ? Math.round(totalSubjectScore / scoreCount) : 0;
+            const completion_rate = scoreCount > 0 ? Math.round(totalSubjectAccuracy / scoreCount) : 0;
+
+            return {
+                id: s.id,
+                uuid: s.uuid,
+                subject_name: s.subject_name,
+                classes: s.subjectClass.map(sc => ({
+                    uuid: sc.class.uuid,
+                    class_name: sc.class.class_name,
+                    class_program: sc.class.class_program,
+                })),
+                quizzes: allQuizzes,
+                total_quiz: totalQuiz,
+                total_student: studentUuids.size,
+                tentors: Array.from(tentorMap.values()),
+                is_my_class: isMyClass,
+                annual_quiz_target: annualGoal,
+                curriculum_progress: curriculumProgress,
+                completed_modules: completed_modules,
+                assigned_class_name: assigned_class_name,
+                average_score: average_score,
+                completion_rate: completion_rate,
+                created_at: s.created_at,
+                updated_at: s.updated_at,
+            }
         });
 
         ok(response, "Showing all subjects.", data, buildMeta(total, page, limit));
@@ -312,16 +327,16 @@ export const getByID = async (request: Request, response: Response): Promise<voi
         if (!subject) { notFound(response, "Subject not found."); return; }
 
         const result = {
-            uuid:         subject.uuid,
+            uuid: subject.uuid,
             subject_name: subject.subject_name,
-            classes:      subject.subjectClass.map(sc => ({
+            classes: subject.subjectClass.map(sc => ({
                 uuid: sc.class.uuid,
                 class_name: sc.class.class_name,
                 class_program: sc.class.class_program,
             })),
-            quizzes:      subject.modules.flatMap(m => m.quizzes),
-            created_at:   subject.created_at,
-            updated_at:   subject.updated_at,
+            quizzes: subject.modules.flatMap(m => m.quizzes),
+            created_at: subject.created_at,
+            updated_at: subject.updated_at,
         };
 
         ok(response, "Show subject data.", result);
@@ -354,10 +369,10 @@ export const updateSubject = async (request: Request, response: Response): Promi
         });
 
         const result = {
-            uuid:         updated.uuid,
+            uuid: updated.uuid,
             subject_name: updated.subject_name,
-            created_at:   updated.created_at,
-            updated_at:   updated.updated_at,
+            created_at: updated.created_at,
+            updated_at: updated.updated_at,
         };
 
         ok(response, "Successfully updated subject data.", result);
