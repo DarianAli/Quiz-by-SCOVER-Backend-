@@ -13,10 +13,10 @@ export const submitAnswer = async (request: Request, response: Response): Promis
 
         // ✅ Ambil quiz UUID dari parent param (bukan integer idQuiz)
         const quizUuid = request.params.uuid;
-        const { questionUuid, optionUuid } = request.body;
+        const { questionUuid, optionUuid, answer_text } = request.body;
 
-        if (!quizUuid || !questionUuid || !optionUuid) {
-            badRequest(response, "quizUuid, questionUuid, dan optionUuid wajib disertakan.");
+        if (!quizUuid || !questionUuid || (!optionUuid && !answer_text)) {
+            badRequest(response, "quizUuid, questionUuid, serta (optionUuid atau answer_text) wajib disertakan.");
             return;
         }
 
@@ -29,10 +29,14 @@ export const submitAnswer = async (request: Request, response: Response): Promis
         });
         if (!question) { notFound(response, "Soal tidak ditemukan atau bukan bagian dari quiz ini."); return; }
 
-        const option = await prisma.options.findFirst({
-            where: { uuid: String(optionUuid), questionsId: question.id },
-        });
-        if (!option) { notFound(response, "Pilihan tidak ditemukan atau bukan bagian dari soal ini."); return; }
+        let optionIdToSave: number | null = null;
+        if (optionUuid) {
+            const option = await prisma.options.findFirst({
+                where: { uuid: String(optionUuid), questionsId: question.id },
+            });
+            if (!option) { notFound(response, "Pilihan tidak ditemukan atau bukan bagian dari soal ini."); return; }
+            optionIdToSave = option.id;
+        }
 
         // ── Cari attempt aktif milik user untuk quiz ini ──────────────────────
         const attempt = await prisma.attempt.findFirst({
@@ -52,15 +56,20 @@ export const submitAnswer = async (request: Request, response: Response): Promis
                 userId:      user.idUser,
                 quizId:      quiz.id,
                 questionsId: question.id,
-                optionsId:   option.id,
+                optionsId:   optionIdToSave,
+                answer_text: answer_text || null,
             },
-            update: { optionsId: option.id },
+            update: { 
+                optionsId: optionIdToSave,
+                answer_text: answer_text || null,
+            },
         });
 
         // ✅ Response tidak mengekspos integer ID
         ok(response, "Jawaban disimpan.", {
             questionUuid,
-            optionUuid,
+            optionUuid: optionUuid || null,
+            answer_text: answer_text || null,
             updated_at: answer.updated_at,
         });
     } catch (err) {

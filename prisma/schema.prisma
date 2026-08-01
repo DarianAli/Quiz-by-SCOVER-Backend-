@@ -42,10 +42,25 @@ enum RetakePolicy {
   UNLIMITED // Bebas berulang
 }
 
+enum ReviewStatus {
+  WAITING_REVIEW
+  REVIEWED
+  AUTO_GRADED
+}
+
 enum ActivityAction {
   STARTED_QUIZ
   COMPLETED_QUIZ
   REVIEWED_QUIZ
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
+  MATCHING
+  FILL_BLANK
 }
 
 // ─── Models ──────────────────────────────────────────────────────────────────
@@ -204,7 +219,8 @@ model attempt {
   user user @relation(fields: [userId], references: [id])
   quiz quiz @relation(fields: [quizId], references: [id])
 
-  score scores? // relasi 1-to-1 ke scores (setelah submit)
+  score   scores?   // relasi 1-to-1 ke scores (setelah submit)
+  answers answers[] // relasi 1-to-many ke answers
 
   @@index([userId, quizId])
   @@map("attempts")
@@ -222,9 +238,10 @@ model scores {
   xp_earned       Int      @default(0)
   start_time      DateTime
   finished_time   DateTime
-  duration_used   Int      @default(0) // actual minutes used
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  duration_used   Int          @default(0) // actual minutes used
+  review_status   ReviewStatus @default(AUTO_GRADED)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
 
   user      user    @relation(fields: [userId], references: [id])
   userId    Int
@@ -245,14 +262,18 @@ model answers {
   quizId      Int
   userId      Int
   questionsId Int
-  optionsId   Int
+  optionsId   Int?
+  answer_text String?  @db.Text
+  score       Int?     // nilai untuk jawaban essay (diberikan tentor)
+  feedback    String?  @db.Text // feedback untuk jawaban essay (diberikan tentor)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
   quiz      quiz      @relation(fields: [quizId], references: [id])
   user      user      @relation(fields: [userId], references: [id])
+  attempt   attempt   @relation(fields: [attemptId], references: [id])
   questions questions @relation(fields: [questionsId], references: [id])
-  options   options   @relation(fields: [optionsId], references: [id])
+  options   options?  @relation(fields: [optionsId], references: [id])
 
   // Satu jawaban per soal per attempt
   @@unique([attemptId, questionsId])
@@ -261,14 +282,15 @@ model answers {
 }
 
 model questions {
-  id             Int        @id @default(autoincrement())
-  uuid           String     @unique @default(uuid())
-  question_text  String     @db.Text
-  question_image String     @default("")
-  discussion     String     @default("") @db.Text // Pembahasan / explanasi
-  difficulty     Difficulty @default(EASY)
-  poin           Int        @default(10)
-  order_index    Int        @default(0) // urutan soal dalam quiz
+  id             Int          @id @default(autoincrement())
+  uuid           String       @unique @default(uuid())
+  question_text  String       @db.Text
+  question_image String       @default("")
+  discussion     String       @default("") @db.Text // Pembahasan / explanasi
+  difficulty     Difficulty   @default(EASY)
+  question_type  QuestionType @default(MULTIPLE_CHOICE)
+  poin           Int          @default(10)
+  order_index    Int          @default(0) // urutan soal dalam quiz
   deleted_at     DateTime?
 
   quizId Int

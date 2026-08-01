@@ -13,7 +13,7 @@ const DAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
 // ─── Student Dashboard Service ────────────────────────────────────────────────
 
-export async function getStudentDashboard(userId: number) {
+export async function getStudentDashboard(userId: number, pageArg: number = 1, limitArg: number = 5) {
     const user = await prisma.user.findFirst({
         where: { id: userId },
         include: {
@@ -211,13 +211,23 @@ export async function getStudentDashboard(userId: number) {
         duration_used:   s.duration_used,
     }));
 
+    const page = pageArg;
+    const limit = limitArg;
+    const skip = (page - 1) * limit;
+
     // ── Activity log ──────────────────────────────────────────────────────────
-    const activities = await prisma.activity_log.findMany({
-        where:   { userId },
-        include: { quiz: { select: { uuid: true, quiz_title: true, module: { select: { subject: { select: { subject_name: true } } } } } } },
-        orderBy: { created_at: "desc" },
-        take: 10,
-    });
+    const [activities, totalActivities] = await Promise.all([
+        prisma.activity_log.findMany({
+            where:   { userId },
+            include: { quiz: { select: { uuid: true, quiz_title: true, module: { select: { subject: { select: { subject_name: true } } } } } } },
+            orderBy: { created_at: "desc" },
+            skip,
+            take: limit,
+        }),
+        prisma.activity_log.count({ where: { userId } })
+    ]);
+
+    const totalPages = Math.ceil(totalActivities / limit);
 
     const recentActivities = activities.map(a => ({
         id:           String(a.id),
@@ -270,6 +280,14 @@ export async function getStudentDashboard(userId: number) {
         weekly_scores:     weeklyScores,
         recent_activities: recentActivities,
         module_progress:   moduleProgress,
+        pagination: {
+            page,
+            limit,
+            totalItems: totalActivities,
+            totalPages,
+            hasNext: page < totalPages,
+            hasPrevious: page > 1,
+        }
     };
 }
 
@@ -386,6 +404,8 @@ export async function getStudentSubjectDetail(userId: number, subjectUuid: strin
             quiz_title:      q.quiz_title,
             difficulty:      q.difficulty,
             duration:        q.duration,
+            retake_policy:   q.retake_policy,
+            max_attempts:    q.max_attempts,
             total_questions: q.questions.length,
             quiz_date:       q.quiz_date.toISOString(),
             student_status:  studentStatus,
@@ -411,6 +431,8 @@ export async function getStudentSubjectDetail(userId: number, subjectUuid: strin
                 quiz_title:      q.quiz_title,
                 difficulty:      q.difficulty,
                 duration:        q.duration,
+                retake_policy:   q.retake_policy,
+                max_attempts:    q.max_attempts,
                 total_questions: q.questions.length,
                 quiz_date:       q.quiz_date.toISOString(),
                 student_status:  studentStatus,
@@ -494,12 +516,25 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
         savedAnswers = Object.fromEntries(answers.map(a => [a.questionsId, a.optionsId]));
     }
 
+    const finishedCount = await prisma.attempt.count({
+        where: { userId, quizId: quiz.id, isFinished: true },
+    });
+    
+    let can_attempt = true;
+    if (quiz.retake_policy === "ONCE" && finishedCount >= 1) {
+        can_attempt = false;
+    } else if (quiz.retake_policy === "LIMITED" && quiz.max_attempts !== null && finishedCount >= quiz.max_attempts) {
+        can_attempt = false;
+    }
+
     return {
         uuid:            quiz.uuid,
         quiz_title:      quiz.quiz_title,
         difficulty:      quiz.difficulty,
         duration:        quiz.duration,
         retake_policy:   quiz.retake_policy,
+        max_attempts:    quiz.max_attempts,
+        can_attempt:     can_attempt,
         total_questions: quiz.questions.length,
         subject_name:    quiz.module?.subject?.subject_name ?? "—",
         questions: quiz.questions.map(q => ({
@@ -508,6 +543,7 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
             question_text:  q.question_text,
             question_image: q.question_image,
             difficulty:     q.difficulty,
+            question_type:  q.question_type,
             poin:           q.poin,
             options:        q.options.map(o => ({
                 idOption:     o.id,
@@ -583,7 +619,8 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
             question_index:    idx + 1,
             question_text:     q.question_text,
             selected_option_id: ans?.optionsId ?? null,
-            is_correct:        ans?.options.is_correct ?? false,
+            answer_text:       ans?.answer_text ?? null,
+            is_correct:        ans?.options?.is_correct ?? false,
             is_skipped:        !ans,
         };
     });
@@ -593,6 +630,8 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
         quiz_title:   quiz.quiz_title,
         subject_name: quiz.module?.subject?.subject_name ?? "—",
         difficulty:   quiz.difficulty,
+        retake_policy: quiz.retake_policy,
+        max_attempts: quiz.max_attempts,
         score: {
             uuid:            score.uuid,
             total_questions: score.total_questions,
