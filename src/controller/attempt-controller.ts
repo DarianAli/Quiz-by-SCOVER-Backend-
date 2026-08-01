@@ -88,21 +88,26 @@ export const startAttempt = async (req: Request, res: Response): Promise<void> =
         // Jika ada attempt yang belum selesai → return untuk resume
         const activeAttempt = existingAttempts.find(a => !a.isFinished);
         if (activeAttempt) {
-            // Kembalikan saved_answers menggunakan questionsId & optionsId (integer, internal mapping)
+            // Kembalikan saved_answers menggunakan questionsId (integer, internal mapping)
             // Frontend menggunakan ini untuk restore state lokal — TIDAK untuk ekspos ke URL
             const savedAnswers = await prisma.answers.findMany({
                 where:  { attemptId: activeAttempt.id },
-                select: { questionsId: true, optionsId: true },
+                select: { questionsId: true, optionsId: true, answer_text: true },
             });
+
+            // Map questionId -> optionId OR answer_text
+            const saved_answers: Record<number, string | number> = {};
+            for (const a of savedAnswers) {
+                if (a.answer_text !== null) saved_answers[a.questionsId] = a.answer_text;
+                else if (a.optionsId !== null) saved_answers[a.questionsId] = a.optionsId;
+            }
 
             ok(res, "Quiz sedang berlangsung, melanjutkan attempt sebelumnya.", {
                 idAttempt:      activeAttempt.id,
                 start_time:     activeAttempt.start_time,
                 duration:       quiz.duration,
                 attempt_number: activeAttempt.attempt_number,
-                saved_answers:  Object.fromEntries(
-                    savedAnswers.map(a => [a.questionsId, a.optionsId]),
-                ),
+                saved_answers,
                 is_resume: true,
             });
             return;
@@ -200,8 +205,18 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
 
         let correct = 0, wrong = 0, score = 0;
         for (const ans of userAnswers) {
-            if (ans.options.is_correct) { correct++; score += ans.questions.poin; }
-            else                         wrong++;
+            if (ans.options) {
+                // Auto-grade multiple choice / true-false
+                if (ans.options.is_correct) { 
+                    correct++; 
+                    score += ans.questions.poin; 
+                } else {
+                    wrong++;
+                }
+            } else if (ans.answer_text) {
+                // Essay / Short Answer (Manual grading later)
+                // We count it as answered (not skipped) but not correct/wrong for auto-grade
+            }
         }
 
         const total_questions = allQuestions.length;
@@ -218,6 +233,9 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
             where: { id: attempt.id },
             data:  { finished_time: now, isFinished: true },
         });
+
+        const hasEssay = allQuestions.some(q => q.question_type === 'ESSAY' || q.question_type === 'SHORT_ANSWER');
+        const reviewStatus = hasEssay ? 'WAITING_REVIEW' : 'AUTO_GRADED';
 
         // ── Simpan skor ────────────────────────────────────────────────────────
         await prisma.scores.create({
@@ -236,6 +254,7 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
                 start_time:      started,
                 finished_time:   now,
                 duration_used:   durUsedMin,
+                review_status:   reviewStatus,
             },
         });
 

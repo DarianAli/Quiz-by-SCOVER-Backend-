@@ -517,3 +517,254 @@ export async function getTentorSubjects(tentorId: number) {
         }
     })
 }
+
+// ─── Tentor Submissions (Essay Grading) ──────────────────────────────────────
+
+export async function getTentorSubmissions(tentorId: number, query: any) {
+    const tentor = await prisma.user.findFirst({
+        where: { id: tentorId, role: "TENTOR" },
+        select: { classId: true }
+    });
+    if (!tentor || !tentor.classId) return null;
+
+    const classId = tentor.classId;
+
+    const page = parseInt(query.page) || 1;
+    const limit = parseInt(query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const search = query.search || "";
+    const statusFilter = query.status || "";
+    const subjectFilter = query.subject || "";
+    const quizFilter = query.quiz || "";
+    const sort = query.sort || "newest";
+
+    // Build the query where clause
+    const whereClause: any = {
+        quiz: {
+            module: {
+                subject: {
+                    subjectClass: {
+                        some: { classId: classId }
+                    }
+                }
+            }
+        },
+        user: {
+            classId: classId
+        }
+    };
+
+    if (search) {
+        whereClause.user.full_name = { contains: search };
+    }
+    if (statusFilter) {
+        whereClause.review_status = statusFilter;
+    }
+    if (subjectFilter) {
+        whereClause.quiz.module.subject.uuid = subjectFilter;
+    }
+    if (quizFilter) {
+        whereClause.quiz.uuid = quizFilter;
+    }
+
+    let orderByClause: any = { created_at: "desc" };
+    if (sort === "oldest") orderByClause = { created_at: "asc" };
+    if (sort === "highest_score") orderByClause = { score: "desc" };
+    if (sort === "lowest_score") orderByClause = { score: "asc" };
+
+    const [submissions, totalItems] = await Promise.all([
+        prisma.scores.findMany({
+            where: whereClause,
+            include: {
+                user: { select: { uuid: true, full_name: true, userName: true, class: { select: { class_name: true } } } },
+                quiz: { select: { uuid: true, quiz_title: true, module: { select: { subject: { select: { subject_name: true } } } } } },
+                attempt: { select: { id: true, start_time: true, finished_time: true } }
+            },
+            orderBy: orderByClause,
+            skip,
+            take: limit,
+        }),
+        prisma.scores.count({ where: whereClause })
+    ]);
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return {
+        data: submissions.map(s => ({
+            id: s.attempt.id,
+            student_name: s.user.full_name || s.user.userName,
+            class_name: s.user.class?.class_name || "-",
+            subject_name: s.quiz.module?.subject?.subject_name || "-",
+            quiz_title: s.quiz.quiz_title,
+            score: s.score,
+            status: s.review_status,
+            submitted_at: s.created_at,
+            duration: s.duration_used
+        })),
+        pagination: {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNext: page < totalPages,
+            hasPrevious: page > 1,
+        }
+    };
+}
+
+export async function getTentorSubmissionDetail(tentorId: number, attemptId: number) {
+    const tentor = await prisma.user.findFirst({
+        where: { id: tentorId, role: "TENTOR" },
+        select: { classId: true }
+    });
+    if (!tentor || !tentor.classId) return null;
+
+    const attempt = await prisma.attempt.findFirst({
+        where: { id: attemptId },
+        include: {
+            user: { select: { classId: true, uuid: true, full_name: true, userName: true, class: { select: { class_name: true } } } },
+            quiz: { select: { uuid: true, quiz_title: true, module: { select: { subject: { select: { subject_name: true } } } } } },
+            score: true,
+        }
+    });
+
+    if (!attempt || !attempt.score) return null;
+    if (attempt.user.class?.class_name === undefined) return null; // Fallback check
+
+    // Check if the student belongs to the tentor's class
+    if (attempt.user.classId !== tentor.classId) {
+        return null; // Unauthorized
+    }
+
+    const answers = await prisma.answers.findMany({
+        where: { attemptId: attempt.id },
+        include: {
+            questions: {
+                include: {
+                    options: true
+                }
+            },
+            options: true
+        }
+    });
+
+    return {
+        student: {
+            name: attempt.user.full_name || attempt.user.userName,
+            class: attempt.user.class?.class_name,
+        },
+        quiz: {
+            subject: attempt.quiz.module?.subject?.subject_name,
+            title: attempt.quiz.quiz_title,
+        },
+        score: {
+            total: attempt.score.score,
+            status: attempt.score.review_status,
+            submitted_at: attempt.score.created_at,
+            duration: attempt.score.duration_used,
+        },
+        answers: answers.map(ans => ({
+            id: ans.id,
+            question: {
+                id: ans.questions.id,
+                uuid: ans.questions.uuid,
+                text: ans.questions.question_text,
+                type: ans.questions.question_type,
+                difficulty: ans.questions.difficulty,
+                points: ans.questions.poin,
+                options: ans.questions.options.map(opt => ({
+                    id: opt.id,
+                    uuid: opt.uuid,
+                    text: opt.option_text,
+                    is_correct: opt.is_correct
+                }))
+            },
+            student_answer: {
+                option_id: ans.optionsId,
+                option_uuid: ans.options?.uuid,
+                text: ans.answer_text,
+                is_correct: ans.options?.is_correct ?? null,
+                score: ans.score, // Essay score
+                feedback: ans.feedback, // Essay feedback
+            }
+        }))
+    };
+}
+
+export async function reviewTentorSubmission(tentorId: number, attemptId: number, reviews: { answerId: number, score: number, feedback: string }[]) {
+    const tentor = await prisma.user.findFirst({
+        where: { id: tentorId, role: "TENTOR" },
+        select: { classId: true }
+    });
+    if (!tentor || !tentor.classId) return null;
+
+    const attempt = await prisma.attempt.findFirst({
+        where: { id: attemptId },
+        include: { score: true, user: true, quiz: true }
+    });
+
+    if (!attempt || !attempt.score) return null;
+    if (attempt.user.classId !== tentor.classId) return null;
+
+    // Update each answer
+    for (const review of reviews) {
+        const answer = await prisma.answers.findFirst({
+            where: { id: review.answerId, attemptId: attempt.id },
+            include: { questions: true }
+        });
+
+        if (answer && (answer.questions.question_type === 'ESSAY' || answer.questions.question_type === 'SHORT_ANSWER')) {
+            // Validate max score
+            const finalScore = Math.min(Math.max(0, review.score), answer.questions.poin);
+            await prisma.answers.update({
+                where: { id: answer.id },
+                data: {
+                    score: finalScore,
+                    feedback: review.feedback
+                }
+            });
+        }
+    }
+
+    // Recalculate Total Score
+    const allAnswers = await prisma.answers.findMany({
+        where: { attemptId: attempt.id },
+        include: { options: true, questions: true }
+    });
+
+    let correct = 0, wrong = 0, totalScoreRaw = 0;
+    for (const ans of allAnswers) {
+        if (ans.options) {
+            // MC / TF
+            if (ans.options.is_correct) {
+                correct++;
+                totalScoreRaw += ans.questions.poin;
+            } else {
+                wrong++;
+            }
+        } else if (ans.questions.question_type === 'ESSAY' || ans.questions.question_type === 'SHORT_ANSWER') {
+            // Add manually graded score
+            totalScoreRaw += ans.score || 0;
+        }
+    }
+
+    const allQuestions = await prisma.questions.findMany({
+        where: { quizId: attempt.quizId, deleted_at: null }
+    });
+    const maxScore = allQuestions.reduce((a, q) => a + q.poin, 0);
+    const normalizedScore = maxScore > 0 ? Math.round((totalScoreRaw / maxScore) * 100) : 0;
+    const accuracy = (correct + wrong) > 0 ? Math.round((correct / (correct + wrong)) * 100) : 0;
+
+    // Update Scores Table
+    await prisma.scores.update({
+        where: { id: attempt.score.id },
+        data: {
+            score: normalizedScore,
+            accuracy: accuracy,
+            review_status: 'REVIEWED'
+        }
+    });
+
+    return { success: true, new_score: normalizedScore };
+}

@@ -26,8 +26,11 @@ export const studentDashboard = async (req: Request, res: Response): Promise<voi
         const uid = getUid(req);
         if (!uid) { unauthorized(res); return; }
 
-        const data = await getStudentDashboard(uid);
-        if (!data) { notFound(res, "Student not found."); return; }
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 5;
+
+        const data = await getStudentDashboard(uid, page, limit);
+        if (!data) { notFound(res, "User not found"); return; }
 
         ok(res, "Dashboard data retrieved successfully.", data);
     } catch (err) {

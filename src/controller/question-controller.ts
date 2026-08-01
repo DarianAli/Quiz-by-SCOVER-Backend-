@@ -10,7 +10,7 @@ import { string } from "joi";
 // ─── POST /question/add ──────────────────────────────────────────────────────
 export const createQuestion = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { question_text, difficulty, poin, quizId, discussion, order_index } = request.body;
+        const { question_text, difficulty, poin, quizId, discussion, order_index, question_type } = request.body;
         
         let filename = "";
         if (request.file) filename = request.file.filename;
@@ -29,12 +29,18 @@ export const createQuestion = async (request: Request, response: Response): Prom
             return;
         }
 
+        // Normalize question_type: frontend sends lowercase (e.g. "essay"), Prisma enum is UPPERCASE
+        const normalizedType = question_type
+            ? String(question_type).toUpperCase()
+            : "MULTIPLE_CHOICE";
+
         const newQuestion = await prisma.questions.create({
             data: {
                 uuid: uuidv4(),
                 question_text,
                 question_image: filename,
                 difficulty: difficulty ?? "EASY",
+                question_type: normalizedType as any,
                 poin: parsedPoin,
                 discussion: discussion ?? null,
                 order_index: order_index ? Number(order_index) : 0,
@@ -56,7 +62,7 @@ export const createQuestion = async (request: Request, response: Response): Prom
 export const updateQuestion = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idQuestion } = request.params;
-        const { question_text, difficulty, poin, discussion, order_index } = request.body;
+        const { question_text, difficulty, poin, discussion, order_index, question_type } = request.body;
 
         let findQuestion;
         if (!isNaN(Number(idQuestion))) {
@@ -80,12 +86,18 @@ export const updateQuestion = async (request: Request, response: Response): Prom
             }
         }
 
+        // Normalize question_type: frontend sends lowercase, Prisma enum is UPPERCASE
+        const normalizedType = question_type
+            ? String(question_type).toUpperCase()
+            : undefined;
+
         const updatedQuestion = await prisma.questions.update({
             where: { id: findQuestion.id },
             data: {
                 question_text: question_text ?? findQuestion.question_text,
                 question_image: filename,
                 difficulty: difficulty ?? findQuestion.difficulty,
+                question_type: normalizedType ? (normalizedType as any) : findQuestion.question_type,
                 poin: poin !== undefined ? Number(poin) : findQuestion.poin,
                 discussion: discussion !== undefined ? discussion : findQuestion.discussion,
                 order_index: order_index !== undefined ? Number(order_index) : findQuestion.order_index,

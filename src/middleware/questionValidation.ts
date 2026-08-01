@@ -4,6 +4,10 @@ import xss from "xss"
 
 
 
+const VALID_QUESTION_TYPES = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY', 'MATCHING', 'FILL_BLANK',
+    // also accept lowercase from frontend (controller will normalize to uppercase)
+    'multiple_choice', 'true_false', 'short_answer', 'essay', 'matching', 'fill_blank'];
+
 const addDataSchema = Joi.object ({
     question_text: Joi.string().trim().min(1).max(5000).required(),
     question_image: Joi.string().uri().optional(),
@@ -11,6 +15,7 @@ const addDataSchema = Joi.object ({
     poin: Joi.number().min(0).required(),
     quizId: Joi.string().required(),
     discussion: Joi.string().trim().max(5000).allow("").optional(),
+    question_type: Joi.string().valid(...VALID_QUESTION_TYPES).optional(),
 })
 
 const editDataSchema = Joi.object ({
@@ -20,7 +25,9 @@ const editDataSchema = Joi.object ({
     poin: Joi.number().min(0).optional(),
     discussion: Joi.string().trim().max(5000).allow("").optional(),
     order_index: Joi.number().min(0).optional(),
+    question_type: Joi.string().valid(...VALID_QUESTION_TYPES).optional(),
 })
+
 
 export const verifyAddQuestion = (request: Request, response: Response, next: NextFunction) =>  {
     const {error} = addDataSchema.validate(request.body, {abortEarly: false});
