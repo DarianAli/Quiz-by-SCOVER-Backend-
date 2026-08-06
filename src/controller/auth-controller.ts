@@ -67,7 +67,7 @@ export const login = async (request: Request, response: Response): Promise<void>
             return;
         }
 
-        const payload = { idUser: user.id, email: user.email, userName: user.userName, role: user.role, class: user.classId };
+        const payload = { idUser: user.id, email: user.email, userName: user.userName, role: user.role, classId: user.classId };
         const token   = Jwt.sign(payload, SECRET, { expiresIn: "1d" });
 
         const cookieOptions = {

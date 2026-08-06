@@ -9,17 +9,25 @@ export const createDataSchema = Joi.object({
         "string.pattern.base": "Subject name can only contain letters, numbers, single spaces, and hyphens (-). No special characters allowed.",
         "any.required": "Subject name is required"
     }),
+    annual_quiz_target: Joi.number().min(0).optional().messages({
+        "number.min": "Annual quiz target must be 0 or greater",
+        "any.custom": "Annual quiz target must be a valid number"
+    }),
     classId: Joi.array().optional()
 })
 
 export const updateDataSchema = Joi.object({
-    subject_name: Joi.string().pattern(/^[A-Za-z0-9]+(?:[\s\-][A-Za-z0-9]+)*$/).min(3).max(100).required().messages({
+    subject_name: Joi.string().pattern(/^[A-Za-z0-9]+(?:[\s\-][A-Za-z0-9]+)*$/).min(3).max(100).optional().messages({
         "string.empty": "Subject name is required",
         "string.min": "Subject name must be at least 3 characters",
         "string.max": "Subject name must not exceed 100 characters",
         "string.pattern.base": "Subject name can only contain letters, numbers, single spaces, and hyphens (-). No special characters allowed.",
         "any.required": "Subject name is required"
-    })
+    }),
+    annual_quiz_target: Joi.number().min(0).optional().messages({
+        "number.min": "Annual quiz target must be 0 or greater",
+        "any.custom": "Annual quiz target must be a valid number"
+    }) 
 })
 
 export const assignDataSchema = Joi.object({

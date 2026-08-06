@@ -9,8 +9,17 @@ import { string } from "joi";
 // classId (body) sekarang berupa array of class UUIDs, bukan numeric id
 export const createSubject = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { subject_name, classId } = request.body;
+        const { subject_name, classId, annual_quiz_target } = request.body;
         if (!subject_name) { badRequest(response, "subject_name is required."); return; }
+
+        let annualTarget: number | null = null
+        if (annual_quiz_target !== undefined && annual_quiz_target !== null && annual_quiz_target !== "") {
+            const n = Number(annual_quiz_target)
+            if (isNaN(n) || n < 1) {
+                badRequest(response, "annual_quiz_target harus angka >= 1."); return;
+            }
+            annualTarget = n
+        }
 
         let classRecords: { id: number }[] = [];
         if (classId !== undefined) {
@@ -35,6 +44,7 @@ export const createSubject = async (request: Request, response: Response): Promi
             data: {
                 uuid: uuidv4(),
                 subject_name,
+                annual_quiz_target: annualTarget,
                 ...(classId && {
                     subjectClass: {
                         create: classRecords.map(c => ({ classId: c.id })),
@@ -49,6 +59,7 @@ export const createSubject = async (request: Request, response: Response): Promi
         const result = {
             uuid:         newSubject.uuid,
             subject_name: newSubject.subject_name,
+            annual_quiz_target: newSubject.annual_quiz_target,
             classes:      newSubject.subjectClass.map(sc => ({
                 uuid: sc.class.uuid,
                 class_name: sc.class.class_name,
@@ -197,6 +208,18 @@ export const getAllSubject = async (request: Request, response: Response): Promi
             bucket.get(m.classId)!.push(m)
         }
 
+        const mapQuizForResponse = (q: { id: number; uuid: string; quiz_title: string; quiz_date: Date; duration: number; status: string; difficulty: string; retake_policy: string; max_attempts: number | null; created_at: Date }) => ({
+            uuid:           q.uuid,
+            quiz_title:     q.quiz_title,
+            quiz_date:      q.quiz_date,
+            duration:       q.duration,
+            status:         q.status,
+            difficulty:     q.difficulty,
+            retake_policy:  q.retake_policy,
+            max_attempts:   q.max_attempts,
+            created_at:     q.created_at,
+        })
+
         const data = subjects.map(s => {
             const classIds = s.subjectClass.map(sc => sc.classId);
 
@@ -222,10 +245,10 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                 const allQuizzes = s.modules.flatMap(m => m.quizzes);
                 const totalQuiz = allQuizzes.length;
                 const publishedQuizzes = allQuizzes.filter(q => q.status === "PUBLISHED");
-                const completed_modules = publishedQuizzes.length;
+                const completedQuizzes = publishedQuizzes.length;
                 const annualGoal = s.annual_quiz_target ?? 0
                 const curriculumProgress = annualGoal && annualGoal > 0
-                    ? Math.min(100, Math.round((completed_modules / annualGoal) * 100))
+                    ? Math.min(100, Math.round((completedQuizzes / annualGoal) * 100))
                     : 0
                     
                 const assigned_class = isMyClass ? s.subjectClass.find(sc => sc.classId === currentUser?.classId)?.class.class_name : null;
@@ -254,14 +277,14 @@ export const getAllSubject = async (request: Request, response: Response): Promi
                         class_name:     sc.class.class_name,
                         class_program:  sc.class.class_program,
                     })),
-                    quizzes:        allQuizzes,
+                    quizzes:        allQuizzes.map(mapQuizForResponse),
                     total_quiz:     totalQuiz,
                     total_student:  studentUuids.size,
                     tentors:        Array.from(tentorMap.values()),
                     is_my_class:    isMyClass,
                     annual_quiz_target: annualGoal,
                     curriculum_progress: curriculumProgress,
-                    completed_modules: completed_modules,
+                    completed_quizzes: completedQuizzes,
                     assigned_class_name: assigned_class_name,
                     average_score: average_score,
                     completion_rate: completion_rate,
@@ -336,7 +359,7 @@ export const getByID = async (request: Request, response: Response): Promise<voi
 export const updateSubject = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idSubject } = request.params;
-        const { subject_name } = request.body;
+        const { subject_name, annual_quiz_target, classId } = request.body;
 
         const subject = await prisma.subject.findFirst({ where: { uuid: String(idSubject) } });
         if (!subject) { notFound(response, "Subject not found."); return; }
@@ -348,14 +371,54 @@ export const updateSubject = async (request: Request, response: Response): Promi
             if (existing) { conflict(response, "Subject name already exists."); return; }
         }
 
+        let annualTarget = subject.annual_quiz_target;
+        if (annual_quiz_target !== undefined) {
+            if (annual_quiz_target === null || annual_quiz_target === "") {
+                annualTarget = null
+            } else {
+                const n = Number(annual_quiz_target);
+                if (isNaN(n) || n < 1) {
+                    badRequest(response, "annual_quiz_target harus sebuah angka >= 1.");
+                    return
+                }
+                annualTarget = n
+            }
+        }
+ 
         const updated = await prisma.subject.update({
             where: { id: subject.id },
-            data: { subject_name: subject_name ?? subject.subject_name },
+            data: { 
+                subject_name: subject_name ?? subject.subject_name,
+                annual_quiz_target: annualTarget, 
+            },
         });
+
+        if (Array.isArray(classId)) {
+            const uniqueUuids = [...new Set(classId.map(String))];
+            const foundClasses = await prisma.classes.findMany({
+                where: {
+                    uuid: { in: uniqueUuids },
+                    
+                }
+            })
+            if (foundClasses.length !== uniqueUuids.length) {
+                notFound(response, "One or more classId not found.");
+                return;
+            }
+            await prisma.subjectClass.deleteMany({
+                where: {
+                    subjectId: subject.id
+                }
+            })
+            await prisma.subjectClass.createMany({
+                data: foundClasses.map(c => ({ subjectId: subject.id, classId: c.id })),
+            })
+        }
 
         const result = {
             uuid:         updated.uuid,
             subject_name: updated.subject_name,
+            annual_quiz_target: updated.annual_quiz_target,
             created_at:   updated.created_at,
             updated_at:   updated.updated_at,
         };

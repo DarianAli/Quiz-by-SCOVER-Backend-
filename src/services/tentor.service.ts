@@ -415,7 +415,8 @@ export async function getTentorSubjects(tentorId: number) {
             deleted_at: null
         },
         select: {
-            classId: true
+            classId: true,
+            class: { select: { class_name: true } }
         }
     })
 
@@ -428,6 +429,16 @@ export async function getTentorSubjects(tentorId: number) {
             deleted_at: null
         }
     })
+
+    const classTentors = await prisma.user.findMany({
+        where: { classId: tentor.classId, role: Role.TENTOR, deleted_at: null },
+        select: { uuid: true, full_name: true, userName: true, photoProfile: true },
+    })
+    const tentorPayload = classTentors.map(t => ({
+        uuid: t.uuid,
+        name: t.full_name || t.userName,
+        photo: t.photoProfile ? `/public/user_image/${t.photoProfile}` : null,
+    }))
 
     const subjects = await prisma.subjectClass.findMany({
         where: { classId: tentor.classId },
@@ -502,18 +513,29 @@ export async function getTentorSubjects(tentorId: number) {
         const completion_rate = expectedCompletions > 0
             ? Math.round((actualCompletions / expectedCompletions) * 100)
             : 0;
+        const annual_quiz_target = subject?.annual_quiz_target ?? 0;
+        const completed_quizzes = publishedQuizzes;
+        const curriculum_progress = annual_quiz_target > 0
+            ? Math.min(100, Math.round((completed_quizzes / annual_quiz_target) * 100))
+            : 0
 
         return {
             id:     subject?.id ?? 0,
             uuid:   subject?.uuid ?? "",
             subject_name:   subject?.subject_name ?? "Deleted Subject",
-            student_count:  totalStudent,
+            total_student:  totalStudent,
             total_quiz:     totalQuizzes,
             published_quiz: publishedQuizzes,
             draft_quiz:     draftQuizzes,
+            tentors:        tentorPayload,
+            is_my_class:    true,
+            assigned_class_name: tentor.class?.class_name ?? "General",
             total_question: total_questions,
             average_score:  average_score,
-            completion_rate: completion_rate
+            completion_rate: completion_rate,
+            annual_quiz_target,
+            completed_quizzes,
+            curriculum_progress,
         }
     })
 }
