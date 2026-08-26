@@ -1,0 +1,33 @@
+import { Request } from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+
+const uploaddir = path.join(process.cwd(), "public", "question_image")
+fs.mkdirSync(uploaddir, { recursive: true })
+
+const storage = multer.diskStorage({
+    destination: (request: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+        cb(null, uploaddir)        
+    },
+    filename: (request: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+        cb(null, `${new Date().getTime().toString()}-${file.originalname}`)
+    }
+})
+
+const ALLOWED_MINE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+const uploadQuestionFile = multer({
+    storage,
+    limits: { fileSize: 2 * 1024 * 1024 },
+
+    fileFilter: (req, file, cb) => {
+        if (ALLOWED_MINE_TYPES.includes(file.mimetype)) {
+            cb(null, true)
+        } else {
+            cb(new Error("Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed."))
+        }
+    }
+})
+
+export default uploadQuestionFile

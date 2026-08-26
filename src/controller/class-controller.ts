@@ -1,221 +1,138 @@
 import { Request, Response } from "express";
-import { PrismaClient, status } from "../../generated/prisma/client";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { v4 as uuidv4 } from "uuid"
-import "dotenv/config";
+import { v4 as uuidv4 } from "uuid";
+import prisma from "../config/prisma.js";
+import { ok, created, badRequest, notFound, serverError } from "../utils/response.util.js";
+import { getPagination, buildMeta } from "../utils/pagination.util.js";
 
-
-const prisma = new PrismaClient({ 
-    errorFormat: "pretty", 
-})
-
-export const createClass = async (request: Request, response: Response) => {
+// ─── POST /class/add ─────────────────────────────────────────────────────────
+export const createClass = async (request: Request, response: Response): Promise<void> => {
     try {
         const { class_name, class_program } = request.body;
-        const uuid = uuidv4()
+        if (!class_name) { badRequest(response, "class_name is required."); return; }
 
-        const data = await prisma.classes.create({
+        const newClass = await prisma.classes.create({
             data: {
-                uuid,
+                uuid: uuidv4(),
                 class_name,
-                class_program
-            }
-        })
-        response.status(201).json({
-            status: true,
-            data: data,
-            message: `Successfully created a class.`
-        })
-        return
+                class_program,
+            },
+        });
+
+        created(response, "Successfully created a class.", newClass);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Failed to create a class.`
-        })
-        return
+        console.error("[createClass]", error);
+        serverError(response);
     }
-}
+};
 
-export const classUpdate = async (request: Request, response: Response) => {
+// ─── PUT /class/update/:uuid ─────────────────────────────────────────────────
+export const classUpdate = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idClass } = request.params;
         const { class_name, class_program } = request.body;
 
-        if (!idClass) {
-            response.status(400).json({
-                status: false,
-                message: `idClass is required.`
-            })
-            return
+        let findClass;
+        if (!isNaN(Number(idClass))) {
+            findClass = await prisma.classes.findFirst({ where: { id: Number(idClass) } });
+        } else {
+            findClass = await prisma.classes.findFirst({ where: { uuid: String(idClass) } });
         }
-
-        if (Number.isNaN(idClass)) {
-            response.status(400).json({
-                status: false,
-                message: `ID muss be a number.`
-            })
-        }
-
-        const findClass = await prisma.classes.findFirst({
-            where: { idClass: Number(idClass) }
-        })
 
         if (!findClass) {
-            response.status(404).json({
-                status: false,
-                message: `Class not found.`
-            })
-            return
+            notFound(response, "Class not found.");
+            return;
         }
-        
+
         const updateData = await prisma.classes.update({
+            where: { id: findClass.id },
             data: {
-                class_name: class_name || findClass.class_name,
-                class_program: class_program || findClass.class_program
+                class_name: class_name ?? findClass.class_name,
+                class_program: class_program ?? findClass.class_program,
             },
-            where: { idClass: Number(idClass) }
-        })
+        });
 
-        response.status(200).json({
-            status: true,
-            data: updateData,
-            message: `Successfully update data.`
-        })
-        return
+        ok(response, "Successfully updated class data.", updateData);
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[classUpdate]", error);
+        serverError(response);
     }
-}
+};
 
-export const getAllData = async (request: Request, response: Response) => {
+// ─── GET /class/all ──────────────────────────────────────────────────────────
+export const getAllData = async (request: Request, response: Response): Promise<void> => {
     try {
-        const search = request.query.search?.toString() ?? "";
+        const { search = "" } = request.query;
+        const { skip, take, page, limit } = getPagination(request.query);
 
-        const allData = await prisma.classes.findMany({
-            where: { 
-                class_name: { contains: search?.toString() }
-            }
-        })
-        response.status(200).json({
-            status: true,
-            data: allData,
-            message: `Showing all class data.`
-        })
-        return
+        const where = {
+            class_name: { contains: String(search) },
+        };
+
+        const [total, classes] = await Promise.all([
+            prisma.classes.count({ where }),
+            prisma.classes.findMany({
+                where,
+                skip,
+                take,
+                orderBy: { id: "asc" },
+            }),
+        ]);
+
+        ok(response, "Showing all class data.", classes, buildMeta(total, page, limit));
     } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-        return
+        console.error("[getAllData]", error);
+        serverError(response);
     }
-}
+};
 
-export const getById = async (request: Request, response: Response) => {
-    try {
-        const { idClass } = request.params;
-        const id = Number(idClass)
-
-        if (!idClass) {
-            response.status(400).json({
-                status: false,
-                message: `idClass is required`
-            })
-            return
-        }
-
-        if (Number.isNaN(id)) {
-            response.status(400).json({
-                status: false,
-                message: `ID muss be a number.`
-            })
-            return
-        }
-
-        const findClass = await prisma.classes.findUnique({
-            where: { idClass: id }
-        })
-
-        if (!findClass) {
-            response.status(404).json({
-                status: false,
-                message: `Class not found.`
-            })
-            return
-        }
-
-        response.status(200).json({
-            status: true,
-            data: findClass,
-            message: `Show data by id.`
-        })
-        return
-    } catch (error) {
-        console.error(error)
-
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
-    }
-}
-
-export const deleteClass = async (request: Request, response: Response) => {
+// ─── GET /class/:uuid ────────────────────────────────────────────────────────
+export const getById = async (request: Request, response: Response): Promise<void> => {
     try {
         const { idClass } = request.params;
 
-        if (!idClass) {
-            response.status(400).json({
-                status: false,
-                message: `idClass is required.`
-            })
-            return
+        let findClass;
+        if (!isNaN(Number(idClass))) {
+            findClass = await prisma.classes.findFirst({ where: { id: Number(idClass) } });
+        } else {
+            findClass = await prisma.classes.findFirst({ where: { uuid: String(idClass) } });
         }
 
-        if (Number.isNaN(idClass)) {
-            response.status(400).json({
-                status: false,
-                message: `ID must be a number.`
-            })
-        }
-
-        const findClass = await prisma.classes.findUnique({
-            where: { idClass: Number(idClass) }
-        })
-        
         if (!findClass) {
-            response.status(404).json({
-                status: false,
-                message: `Class not found.`
-            })
-            return
+            notFound(response, "Class not found.");
+            return;
+        }
+
+        ok(response, "Show data by id.", findClass);
+    } catch (error) {
+        console.error("[getById]", error);
+        serverError(response);
+    }
+};
+
+// ─── DELETE /class/delete/:uuid ──────────────────────────────────────────────
+export const deleteClass = async (request: Request, response: Response): Promise<void> => {
+    try {
+        const { idClass } = request.params;
+
+        let findClass;
+        if (!isNaN(Number(idClass))) {
+            findClass = await prisma.classes.findFirst({ where: { id: Number(idClass) } });
+        } else {
+            findClass = await prisma.classes.findFirst({ where: { uuid: String(idClass) } });
+        }
+
+        if (!findClass) {
+            notFound(response, "Class not found.");
+            return;
         }
 
         const deleteData = await prisma.classes.delete({
-            where: { idClass: Number(idClass) }
-        })
-        response.status(200).json({
-            status: true,
-            data: deleteData,
-            message: `Data deleted.`
-        })
-        return
-    } catch (error) {
-        console.error(error)
+            where: { id: findClass.id },
+        });
 
-        response.status(500).json({
-            status: false,
-            message: `Internal server error.`
-        })
+        ok(response, "Class deleted.", deleteData);
+    } catch (error) {
+        console.error("[deleteClass]", error);
+        serverError(response);
     }
-}
+};

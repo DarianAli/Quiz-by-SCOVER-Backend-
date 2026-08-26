@@ -1,0 +1,19 @@
+import express from "express"
+import { verifyRole, verifyToken } from "../middleware/auth.js"
+import { assignDataValidation, createDataValidation, updateDataValidation } from "../middleware/subjectValidation.js"
+import { assignSubject, createSubject, deleteSubject, getAllSubject, getByID, getSubjectByUser, updateSubject } from "../controller/subject-controller.js"
+import { deleteLimiter, postLimiter, updateLimiter } from "../middleware/rateLimiter.js"
+
+const app = express()
+app.use(express.json())
+
+app.post("/create", postLimiter, [verifyToken, verifyRole(["ADMIN"]), createDataValidation], createSubject)
+app.post("/assign/:idSubject", postLimiter, [verifyToken, verifyRole(["ADMIN"]), assignDataValidation], assignSubject)
+app.get("/all", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getAllSubject)
+app.get("/get/:idSubject", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getByID)
+app.get("/:idUser/subjects", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getSubjectByUser)
+app.put("/update-data/:idSubject", updateLimiter, [verifyToken, verifyRole(["ADMIN"]), updateDataValidation], updateSubject)
+app.delete("/delete-subject/:idSubject", deleteLimiter, [verifyToken, verifyRole(["ADMIN"]), deleteSubject])
+
+
+export default app
