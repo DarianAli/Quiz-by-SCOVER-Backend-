@@ -24,6 +24,6 @@ const upload = multer({
 router.post("/parse", auth, upload.single("file"), parseWordImport)
 router.get("/:sessionId/media/:filename", auth, getImportMedia)
 router.post("/:sessionId/commit", auth, commitWordImport)
-router.delete("/sessionId", auth, discardWordImport);
+router.delete("/:sessionId", auth, discardWordImport);
 
 export default router;

@@ -479,7 +479,7 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
         include: {
             module: { include: { subject: { select: { subject_name: true } } } },
             questions: {
-                where: { deleted_at: null },
+                where: { deleted_at: null, parentId: null }, // only top-level
                 orderBy: { order_index: "asc" },
                 include: {
                     options: {
@@ -489,7 +489,20 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
                             uuid:         true,
                             option_text:  true,
                             option_image: true,
-                            // is_correct NOT included for student
+                            // is_correct NOT included for student during quiz
+                        },
+                    },
+                    question_images: { orderBy: { order_index: "asc" } },
+                    // Children for STORY_GROUP
+                    children: {
+                        where:    { deleted_at: null },
+                        orderBy:  { order_index: "asc" },
+                        include: {
+                            options: {
+                                orderBy: { order_index: "asc" },
+                                select: { id: true, uuid: true, option_text: true, option_image: true },
+                            },
+                            question_images: { orderBy: { order_index: "asc" } },
                         },
                     },
                 },
@@ -506,14 +519,18 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
 
     // Load saved answers if resume
     const existingAttempt = quiz.attempts[0] ?? null;
-    let savedAnswers: Record<number, number> = {};
+    let savedAnswers: Record<number, number | string | null> = {};
 
     if (existingAttempt) {
         const answers = await prisma.answers.findMany({
             where: { attemptId: existingAttempt.id },
-            select: { questionsId: true, optionsId: true },
+            select: { questionsId: true, optionsId: true, answer_text: true },
         });
-        savedAnswers = Object.fromEntries(answers.map(a => [a.questionsId, a.optionsId]));
+        // For multiple complex, answer_text holds the comma-separated option IDs
+        savedAnswers = Object.fromEntries(answers.map(a => [
+            a.questionsId,
+            a.answer_text !== null ? a.answer_text : a.optionsId
+        ]));
     }
 
     const finishedCount = await prisma.attempt.count({
@@ -538,19 +555,46 @@ export async function getStudentQuizDetail(userId: number, quizUuid: string) {
         total_questions: quiz.questions.length,
         subject_name:    quiz.module?.subject?.subject_name ?? "—",
         questions: quiz.questions.map(q => ({
-            idQuestion:     q.id,
-            uuid:           q.uuid,
-            question_text:  q.question_text,
-            question_image: q.question_image,
-            difficulty:     q.difficulty,
-            question_type:  q.question_type,
-            poin:           q.poin,
-            options:        q.options.map(o => ({
+            idQuestion:            q.id,
+            uuid:                  q.uuid,
+            question_text:         q.question_text,
+            question_image:        q.question_image || null,
+            question_images:       q.question_images.map(img => ({
+                id:          img.id,
+                filename:    img.filename,
+                url:         `/public/question_image/${img.filename}`,
+                order_index: img.order_index,
+            })),
+            difficulty:            q.difficulty,
+            question_type:         q.question_type,
+            poin:                  q.poin,
+            allow_multiple_answers: q.allow_multiple_answers,
+            is_strict:             q.is_strict,
+            options:               q.options.map(o => ({
                 idOption:     o.id,
                 uuid:         o.uuid,
                 option_text:  o.option_text,
                 option_image: o.option_image,
             })),
+            // Children for STORY_GROUP questions
+            children: (q as any).children?.map((c: any) => ({
+                idQuestion:            c.id,
+                uuid:                  c.uuid,
+                question_text:         c.question_text,
+                question_image:        c.question_image || null,
+                question_images:       c.question_images?.map((img: any) => ({
+                    id: img.id, filename: img.filename,
+                    url: `/public/question_image/${img.filename}`, order_index: img.order_index,
+                })) ?? [],
+                difficulty:            c.difficulty,
+                question_type:         c.question_type,
+                poin:                  c.poin,
+                allow_multiple_answers: c.allow_multiple_answers,
+                is_strict:             c.is_strict,
+                options:               c.options?.map((o: any) => ({
+                    idOption: o.id, uuid: o.uuid, option_text: o.option_text, option_image: o.option_image,
+                })) ?? [],
+            })) ?? [],
         })),
         attempt: existingAttempt
             ? {
@@ -667,7 +711,7 @@ export async function getStudentQuizReview(userId: number, quizUuid: string) {
     if (!attempt) return null;
 
     const questions = await prisma.questions.findMany({
-        where:   { quizId: quiz.id, deleted_at: null },
+        where:   { quizId: quiz.id, deleted_at: null, parentId: null },
         orderBy: { order_index: "asc" },
         include: {
             options: {
@@ -680,29 +724,84 @@ export async function getStudentQuizReview(userId: number, quizUuid: string) {
                     is_correct:   true,
                 },
             },
+            question_images: { orderBy: { order_index: "asc" } },
+            // Children for STORY_GROUP review
+            children: {
+                where:   { deleted_at: null },
+                orderBy: { order_index: "asc" },
+                include: {
+                    options: {
+                        orderBy: { order_index: "asc" },
+                        select: { id: true, uuid: true, option_text: true, option_image: true, is_correct: true },
+                    },
+                    question_images: { orderBy: { order_index: "asc" } },
+                },
+            },
         },
     });
 
     const answers = await prisma.answers.findMany({
         where: { attemptId: attempt.id },
     });
-    const answerMap = new Map(answers.map(a => [a.questionsId, a.optionsId]));
+    const answerMap = new Map(answers.map(a => [a.questionsId, a]));
 
     const reviewQuestions = questions.map((q, idx) => {
-        const selectedOptionId = answerMap.get(q.id) ?? null;
+        const ansRecord        = answerMap.get(q.id);
+        const selectedOptionId = ansRecord?.optionsId ?? null;
+        const answerText       = ansRecord?.answer_text ?? null;
         const correctOption    = q.options.find(o => o.is_correct);
-        const selectedOption   = q.options.find(o => o.id === selectedOptionId);
-        const isCorrect        = selectedOption?.is_correct ?? false;
+
+        let isCorrect = false;
+        let selectedOption: typeof q.options[0] | undefined;
+        let selectedOptionIds: number[] = [];
+
+        if (q.question_type === "FILL_BLANK") {
+            if (answerText) {
+                const student = answerText.trim();
+                const correctOptions = q.options.filter(o => o.is_correct);
+                isCorrect = correctOptions.some(opt => {
+                    const correctText = opt.option_text.trim();
+                    if (q.is_strict) return student === correctText;
+                    return student.toLowerCase() === correctText.toLowerCase();
+                });
+            }
+        } else if (q.question_type === "MULTIPLE_COMPLEX" || q.allow_multiple_answers) {
+            if (answerText) {
+                selectedOptionIds = answerText.split(",").map(Number).filter(n => !isNaN(n));
+                const correctIds  = new Set(q.options.filter(o => o.is_correct).map(o => o.id));
+                const selectedSet = new Set(selectedOptionIds);
+                isCorrect = correctIds.size === selectedSet.size;
+                if (isCorrect) {
+                    for (const id of correctIds) {
+                        if (!selectedSet.has(id)) { isCorrect = false; break; }
+                    }
+                }
+            }
+        } else {
+            selectedOption = q.options.find(o => o.id === selectedOptionId);
+            isCorrect      = selectedOption?.is_correct ?? false;
+        }
+
+        const isSkipped = selectedOptionId === null && !answerText;
 
         return {
             idQuestion:        q.id,
             uuid:              q.uuid,
             question_index:    idx + 1,
             question_text:     q.question_text,
-            question_image:    q.question_image,
+            question_image:    q.question_image || null,
+            question_images:   q.question_images.map(img => ({
+                id:          img.id,
+                filename:    img.filename,
+                url:         `/public/question_image/${img.filename}`,
+                order_index: img.order_index,
+            })),
             discussion:        q.discussion,
             difficulty:        q.difficulty,
             poin:              q.poin,
+            question_type:     q.question_type,
+            allow_multiple_answers: q.allow_multiple_answers,
+            is_strict:         q.is_strict,
             options:           q.options.map(o => ({
                 idOption:     o.id,
                 uuid:         o.uuid,
@@ -710,11 +809,13 @@ export async function getStudentQuizReview(userId: number, quizUuid: string) {
                 option_image: o.option_image,
                 is_correct:   o.is_correct,
             })),
-            selected_option_id: selectedOptionId,
-            correct_option_id:  correctOption?.id ?? 0,
-            is_correct:         isCorrect,
-            is_skipped:         selectedOptionId === null,
-            is_marked_review:   false, // tidak disimpan di DB, client-side only
+            selected_option_id:   selectedOptionId,
+            selected_option_ids:  selectedOptionIds, // for MULTIPLE_COMPLEX
+            answer_text:          answerText,         // for FILL_BLANK / ESSAY
+            correct_option_id:    correctOption?.id ?? 0,
+            is_correct:           isCorrect,
+            is_skipped:           isSkipped,
+            is_marked_review:     false, // tidak disimpan di DB, client-side only
         };
     });
 

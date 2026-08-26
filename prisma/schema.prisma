@@ -61,6 +61,8 @@ enum QuestionType {
   ESSAY
   MATCHING
   FILL_BLANK
+  STORY_GROUP       // Parent question that holds a shared story/passage with child questions
+  MULTIPLE_COMPLEX  // Multiple choice where more than one answer can be correct
 }
 
 // ─── Models ──────────────────────────────────────────────────────────────────
@@ -285,7 +287,7 @@ model questions {
   id             Int          @id @default(autoincrement())
   uuid           String       @unique @default(uuid())
   question_text  String       @db.Text
-  question_image String       @default("")
+  question_image String       @default("") // kept for backward compat (single image via editor upload)
   discussion     String       @default("") @db.Text // Pembahasan / explanasi
   difficulty     Difficulty   @default(EASY)
   question_type  QuestionType @default(MULTIPLE_CHOICE)
@@ -293,16 +295,53 @@ model questions {
   order_index    Int          @default(0) // urutan soal dalam quiz
   deleted_at     DateTime?
 
+  // ── Story Group support ──────────────────────────────────────────────────
+  // When question_type = STORY_GROUP, this is the parent. Children point back
+  // to it via parentId. A child's own question_type can be any concrete type.
+  parentId       Int?         // null = top-level question; non-null = child of a STORY_GROUP
+  parent         questions?   @relation("StoryChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children       questions[]  @relation("StoryChildren")
+
+  // ── Multiple Choice Complex ───────────────────────────────────────────────
+  // When true, the question accepts multiple correct options (checkbox UX).
+  // Backward compat: existing rows default to false (single correct answer).
+  allow_multiple_answers Boolean @default(false)
+
+  // ── Fill in the Blank — strict case-sensitive validation ──────────────────
+  // When true, student answer must match exactly (case-sensitive, trimmed).
+  // When false (default), comparison is case-insensitive.
+  is_strict      Boolean      @default(false)
+
   quizId Int
   quiz   quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  options options[]
-  answers answers[]
+  options         options[]
+  answers         answers[]
+  question_images question_images[] // multiple images (from Word import or future multi-image upload)
 
   @@index([quizId])
+  @@index([parentId])
   @@index([deleted_at])
   @@map("questions")
 }
+
+/// Gambar-gambar yang dilampirkan ke soal (mendukung lebih dari satu gambar per soal).
+/// Urutan ditentukan oleh order_index. Backward-compat: soal lama tetap pakai question_image (string) di tabel questions.
+model question_images {
+  id          Int    @id @default(autoincrement())
+  uuid        String @unique @default(uuid())
+  /// Nama file relatif di public/question_image/
+  filename    String
+  /// URL lengkap yang bisa langsung dipakai di frontend (diisi oleh controller/service, bukan disimpan ke DB)
+  order_index Int    @default(0)
+
+  questionsId Int
+  question    questions @relation(fields: [questionsId], references: [id], onDelete: Cascade)
+
+  @@index([questionsId])
+  @@map("question_images")
+}
+
 
 model options {
   id           Int     @id @default(autoincrement())
