@@ -195,21 +195,68 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
             where:   { attemptId: attempt.id },
             include: {
                 options:   { select: { is_correct: true } },
-                questions: { select: { poin: true } },
+                questions: { 
+                    select: { 
+                        poin: true, 
+                        question_type: true, 
+                        allow_multiple_answers: true,
+                        is_strict: true,
+                        options: { select: { id: true, is_correct: true, option_text: true } },
+                    } 
+                },
             },
         });
 
+        // Only count top-level questions (STORY_GROUP children answered separately are scored by parent context)
         const allQuestions = await prisma.questions.findMany({
-            where: { quizId: attempt.quizId, deleted_at: null },
+            where: { quizId: attempt.quizId, deleted_at: null, parentId: null },
         });
 
         let correct = 0, wrong = 0, score = 0;
         for (const ans of userAnswers) {
-            if (ans.options) {
-                // Auto-grade multiple choice / true-false
+            const qType      = ans.questions.question_type;
+            const allowMulti = ans.questions.allow_multiple_answers;
+            const isStrict   = ans.questions.is_strict;
+            const poin       = ans.questions.poin;
+
+            if (qType === 'MULTIPLE_COMPLEX' || allowMulti) {
+                // ── Multiple Complex: exact set match ─────────────────────────
+                if (ans.answer_text) {
+                    const selectedIds = ans.answer_text.split(",").map(Number).filter(n => !isNaN(n));
+                    const allOpts     = ans.questions.options;
+                    const correctIds  = new Set(allOpts.filter(o => o.is_correct).map(o => o.id));
+                    const selectedSet = new Set(selectedIds);
+                    let isCorrectMC   = correctIds.size === selectedSet.size;
+                    if (isCorrectMC) {
+                        for (const id of correctIds) {
+                            if (!selectedSet.has(id)) { isCorrectMC = false; break; }
+                        }
+                    }
+                    if (isCorrectMC) { correct++; score += poin; }
+                    else { wrong++; }
+                } else {
+                    wrong++;
+                }
+            } else if (qType === 'FILL_BLANK') {
+                // ── Fill Blank: match any correct option ──────────────────────
+                if (ans.answer_text) {
+                    const student = ans.answer_text.trim();
+                    const correctOptions = ans.questions.options.filter(o => o.is_correct);
+                    const isCorrectFB = correctOptions.some(opt => {
+                        const correctText = opt.option_text.trim();
+                        if (isStrict) return student === correctText;
+                        return student.toLowerCase() === correctText.toLowerCase();
+                    });
+                    if (isCorrectFB) { correct++; score += poin; }
+                    else { wrong++; }
+                } else {
+                    wrong++;
+                }
+            } else if (ans.options) {
+                // ── Standard single choice (MULTIPLE_CHOICE, TRUE_FALSE) ──────
                 if (ans.options.is_correct) { 
                     correct++; 
-                    score += ans.questions.poin; 
+                    score += poin; 
                 } else {
                     wrong++;
                 }

@@ -1,36 +1,29 @@
-import express from "express";
-import multer  from "multer";
-import { verifyToken, verifyRole } from "../middleware/auth.js";
-import { previewImport, confirmImport } from "../controller/import-controller.js";
+import express from "express"
+import multer from "multer"
+import path from "node:path"
+import os from "os"
+import { verifyToken, verifyRole } from "../middleware/auth.js"
+import { parseWordImport, getImportMedia, commitWordImport, discardWordImport } from "../controller/QuestionImport.js"
 
-const router  = express.Router();
+const router = express.Router()
+const auth = [verifyToken, verifyRole(["TENTOR", "ADMIN"])]
 
-// Multer — memory storage, hanya .xlsx/.docx, max 10MB
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits:  { fileSize: 10 * 1024 * 1024 },
+    dest: os.tmpdir(),
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
     fileFilter: (_req, file, cb) => {
-        const allowed = [
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.ms-excel",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/msword",
-        ];
-        const ext = file.originalname.split(".").pop()?.toLowerCase();
-        if (allowed.includes(file.mimetype) || ["xlsx", "xls", "docx", "doc"].includes(ext ?? "")) {
-            cb(null, true);
-        } else {
-            cb(new Error("Hanya file .xlsx atau .docx yang diizinkan."));
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (![".docx", ".doc"].includes(ext)) {
+            cb(new Error("Hanya dile .docx atau .doc yang didukung."));
+            return;
         }
-    },
-});
+        cb(null, true)
+    }
+})
 
-const auth = [verifyToken, verifyRole(["TENTOR", "ADMIN"])];
-
-// POST /import/questions/preview — upload file & preview parsed questions
-router.post("/questions/preview", auth, upload.single("file"), previewImport);
-
-// POST /import/questions/confirm — simpan hasil preview ke DB
-router.post("/questions/confirm", auth, confirmImport);
+router.post("/parse", auth, upload.single("file"), parseWordImport)
+router.get("/:sessionId/media/:filename", auth, getImportMedia)
+router.post("/:sessionId/commit", auth, commitWordImport)
+router.delete("/:sessionId", auth, discardWordImport);
 
 export default router;

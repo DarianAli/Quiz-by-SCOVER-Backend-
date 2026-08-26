@@ -21,7 +21,7 @@ export const tentorDashboard = async (req: Request, res: Response): Promise<void
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 5;
 
-        const data = await getTentorDashboard(uid, page, limit);
+        const data = await getTentorDashboard(uid);
         if (!data) { notFound(res, "Tentor not found."); return; }
 
         ok(res, "Dashboard retrieved successfully.", data);
@@ -106,7 +106,7 @@ export const tentorSubmissionsList = async (req: Request, res: Response): Promis
 export const tentorSubmissionDetail = async (req: Request, res: Response): Promise<void> => {
     try {
         const uid = getUid(req);
-        const attemptId = parseInt(req.params.id);
+        const attemptId = parseInt(String(req.params.id));
         if (!uid) { unauthorized(res); return; }
         if (isNaN(attemptId)) { notFound(res, "Invalid submission ID"); return; }
 
@@ -124,7 +124,7 @@ export const tentorSubmissionDetail = async (req: Request, res: Response): Promi
 export const tentorReviewSubmission = async (req: Request, res: Response): Promise<void> => {
     try {
         const uid = getUid(req);
-        const attemptId = parseInt(req.params.id);
+        const attemptId = parseInt(String(req.params.id));
         const { reviews } = req.body; // Array of { answerId, score, feedback }
 
         if (!uid) { unauthorized(res); return; }

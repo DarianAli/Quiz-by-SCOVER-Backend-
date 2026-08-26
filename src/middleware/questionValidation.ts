@@ -5,8 +5,10 @@ import xss from "xss"
 
 
 const VALID_QUESTION_TYPES = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY', 'MATCHING', 'FILL_BLANK',
+    'STORY_GROUP', 'MULTIPLE_COMPLEX',
     // also accept lowercase from frontend (controller will normalize to uppercase)
-    'multiple_choice', 'true_false', 'short_answer', 'essay', 'matching', 'fill_blank'];
+    'multiple_choice', 'true_false', 'short_answer', 'essay', 'matching', 'fill_blank',
+    'story_group', 'multiple_complex'];
 
 const addDataSchema = Joi.object ({
     question_text: Joi.string().trim().min(1).max(5000).required(),
@@ -16,6 +18,9 @@ const addDataSchema = Joi.object ({
     quizId: Joi.string().required(),
     discussion: Joi.string().trim().max(5000).allow("").optional(),
     question_type: Joi.string().valid(...VALID_QUESTION_TYPES).optional(),
+    parentId: Joi.number().integer().optional(),
+    allow_multiple_answers: Joi.boolean().optional(),
+    is_strict: Joi.boolean().optional(),
 })
 
 const editDataSchema = Joi.object ({
@@ -26,6 +31,9 @@ const editDataSchema = Joi.object ({
     discussion: Joi.string().trim().max(5000).allow("").optional(),
     order_index: Joi.number().min(0).optional(),
     question_type: Joi.string().valid(...VALID_QUESTION_TYPES).optional(),
+    parentId: Joi.number().integer().allow(null).optional(),
+    allow_multiple_answers: Joi.boolean().optional(),
+    is_strict: Joi.boolean().optional(),
 })
 
 
