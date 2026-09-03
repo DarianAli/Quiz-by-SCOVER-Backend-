@@ -61,8 +61,8 @@ enum QuestionType {
   ESSAY
   MATCHING
   FILL_BLANK
-  STORY_GROUP       // Parent question that holds a shared story/passage with child questions
-  MULTIPLE_COMPLEX  // Multiple choice where more than one answer can be correct
+  STORY_GROUP // Parent question that holds a shared story/passage with child questions
+  MULTIPLE_COMPLEX // Multiple choice where more than one answer can be correct
 }
 
 // ─── Models ──────────────────────────────────────────────────────────────────
@@ -99,11 +99,13 @@ model user {
   class   classes? @relation(fields: [classId], references: [id])
   classId Int?
 
-  scores       scores[]
-  answers      answers[]
-  attempts     attempt[]
-  activityLogs activity_log[]
-  streak       user_streak?
+  scores               scores[]
+  answers              answers[]
+  attempts             attempt[]
+  activityLogs         activity_log[]
+  streak               user_streak?
+  tentorSubjects       tentorSubject[]
+  studentModuleProgres studentModuleProgres[]
 
   @@index([classId])
   @@index([email])
@@ -126,17 +128,19 @@ model classes {
 }
 
 model subject {
-  id           Int       @id @default(autoincrement())
-  uuid         String    @unique @default(uuid())
-  subject_name String    @unique
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
-  deleted_at   DateTime? // soft delete
+  id                 Int       @id @default(autoincrement())
+  uuid               String    @unique @default(uuid())
+  subject_name       String    @unique
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime? // soft delete
   annual_quiz_target Int? // target jumlah quiz per tahun
 
   subjectClass subjectClass[]
 
-  modules      module[]
+  modules        module[]
+  subjectLevels  subjectLevel[]
+  tentorSubjects tentorSubject[]
 
   @@index([deleted_at])
   @@map("subjects")
@@ -153,24 +157,82 @@ model subjectClass {
   @@map("subject_classes")
 }
 
-model module {
-  id           Int       @id @default(autoincrement())
-  uuid         String    @unique @default(uuid())
-  module_name  String
-  description  String    @default("") @db.Text
-  order_index  Int       @default(0)
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
-  deleted_at   DateTime? // soft delete
+model subjectLevel {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  level_name  String
+  order_index Int       @default(0)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
 
-  subjectId    Int
-  subject      subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId Int
+  subject   subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
-  quizzes      quiz[]
+  modules module[]
 
   @@index([subjectId])
   @@index([deleted_at])
+  @@map("subject_levels")
+}
+
+model tentorSubject {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  subjectId  Int
+  created_at DateTime @default(now())
+
+  user    user    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectId])
+  @@index([userId])
+  @@index([subjectId])
+  @@map("tentor_subject")
+}
+
+model module {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  module_name String
+  description String    @default("") @db.Text
+  order_index Int       @default(0)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime? // soft delete
+
+  subjectLevelId Int
+  subjectLvel    subjectLevel @relation(fields: [subjectLevelId], references: [id], onDelete: Cascade)
+
+  subjectId Int
+  subject   subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  quizzes              quiz[]
+  studentModuleProgres studentModuleProgres[]
+
+  @@index([subjectId])
+  @@index([subjectLevelId])
+  @@index([deleted_at])
   @@map("modules")
+}
+
+model studentModuleProgres {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  moduleId         Int
+  completed_quiz   Int      @default(0)
+  totalQuiz        Int      @default(0)
+  score_presentage Float    @default(0)
+  isCompleted      Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+
+  user   user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@index([userId])
+  @@index([moduleId])
+  @@map("student_module_progres")
 }
 
 model quiz {
@@ -193,8 +255,8 @@ model quiz {
   updated_at   DateTime  @updatedAt
   deleted_at   DateTime? // soft delete
 
-  module    module?  @relation(fields: [moduleId], references: [id], onDelete: SetNull)
-  moduleId  Int?
+  module   module? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  moduleId Int?
 
   scores       scores[]
   answers      answers[]
@@ -221,7 +283,7 @@ model attempt {
   user user @relation(fields: [userId], references: [id])
   quiz quiz @relation(fields: [quizId], references: [id])
 
-  score   scores?   // relasi 1-to-1 ke scores (setelah submit)
+  score   scores? // relasi 1-to-1 ke scores (setelah submit)
   answers answers[] // relasi 1-to-many ke answers
 
   @@index([userId, quizId])
@@ -229,15 +291,15 @@ model attempt {
 }
 
 model scores {
-  id              Int      @id @default(autoincrement())
-  uuid            String   @unique @default(uuid())
-  total_questions Int      @default(0)
-  correct         Int      @default(0)
-  wrong           Int      @default(0)
-  skipped         Int      @default(0)
-  score           Int      @default(0) // 0-100
-  accuracy        Float    @default(0) // percentage
-  xp_earned       Int      @default(0)
+  id              Int          @id @default(autoincrement())
+  uuid            String       @unique @default(uuid())
+  total_questions Int          @default(0)
+  correct         Int          @default(0)
+  wrong           Int          @default(0)
+  skipped         Int          @default(0)
+  score           Int          @default(0) // 0-100
+  accuracy        Float        @default(0) // percentage
+  xp_earned       Int          @default(0)
   start_time      DateTime
   finished_time   DateTime
   duration_used   Int          @default(0) // actual minutes used
@@ -266,7 +328,7 @@ model answers {
   questionsId Int
   optionsId   Int?
   answer_text String?  @db.Text
-  score       Int?     // nilai untuk jawaban essay (diberikan tentor)
+  score       Int? // nilai untuk jawaban essay (diberikan tentor)
   feedback    String?  @db.Text // feedback untuk jawaban essay (diberikan tentor)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
@@ -298,9 +360,9 @@ model questions {
   // ── Story Group support ──────────────────────────────────────────────────
   // When question_type = STORY_GROUP, this is the parent. Children point back
   // to it via parentId. A child's own question_type can be any concrete type.
-  parentId       Int?         // null = top-level question; non-null = child of a STORY_GROUP
-  parent         questions?   @relation("StoryChildren", fields: [parentId], references: [id], onDelete: Cascade)
-  children       questions[]  @relation("StoryChildren")
+  parentId Int? // null = top-level question; non-null = child of a STORY_GROUP
+  parent   questions?  @relation("StoryChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children questions[] @relation("StoryChildren")
 
   // ── Multiple Choice Complex ───────────────────────────────────────────────
   // When true, the question accepts multiple correct options (checkbox UX).
@@ -310,7 +372,7 @@ model questions {
   // ── Fill in the Blank — strict case-sensitive validation ──────────────────
   // When true, student answer must match exactly (case-sensitive, trimmed).
   // When false (default), comparison is case-insensitive.
-  is_strict      Boolean      @default(false)
+  is_strict Boolean @default(false)
 
   quizId Int
   quiz   quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
@@ -341,7 +403,6 @@ model question_images {
   @@index([questionsId])
   @@map("question_images")
 }
-
 
 model options {
   id           Int     @id @default(autoincrement())
