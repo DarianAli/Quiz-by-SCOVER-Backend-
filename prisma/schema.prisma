@@ -201,8 +201,8 @@ model module {
   updated_at  DateTime  @updatedAt
   deleted_at  DateTime? // soft delete
 
-  subjectLevelId Int
-  subjectLvel    subjectLevel @relation(fields: [subjectLevelId], references: [id], onDelete: Cascade)
+  subjectLevelId Int?
+  subjectLvel    subjectLevel? @relation(fields: [subjectLevelId], references: [id], onDelete: Cascade)
 
   subjectId Int
   subject   subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
