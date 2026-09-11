@@ -13,7 +13,7 @@ const router = express.Router();
 
 // ─── Quiz CRUD ─────────────────────────────────────────────────────────────────
 router.get("/all",               [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getAllQuiz);
-router.get("/:uuid",             [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"])], getQuizByUuid);
+router.get("/:uuid",             [verifyToken, verifyRole(["ADMIN", "TENTOR"])], getQuizByUuid);
 router.post("/add",               [verifyToken, verifyRole(["ADMIN", "TENTOR"])], createQuiz);
 router.put("/update/:uuid",      updateLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR"])], updateQuiz);
 router.delete("/delete/:uuid",   deleteLimiter, [verifyToken, verifyRole(["ADMIN", "TENTOR"])], deleteQuiz);

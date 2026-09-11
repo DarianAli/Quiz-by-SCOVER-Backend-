@@ -114,6 +114,7 @@ export const getQuizByUuid = async (req: Request, res: Response): Promise<void> 
                         options: {
                             orderBy: { order_index: "asc" },
                         },
+                        children: { where: { deleted_at: null }, orderBy: { order_index: "asc" }, include: { options: { orderBy: { order_index: "asc" } }, question_images: { orderBy: { order_index: "asc" } } } },
                         question_images: {
                             orderBy: { order_index: "asc" },
                         },
