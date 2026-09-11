@@ -8,7 +8,7 @@ export const addDataSchema = Joi.object({
     email: Joi.string().email().required(),
     password: Joi.string().min(6).max(128).required(),
     full_name: Joi.string().required(),
-    role: Joi.string().valid("TENTOR", "STUDENT").required(),
+    role: Joi.string().valid("STUDENT").required(),
         phone_number: Joi.string().min(10).max(13).required(),
     classId: Joi.number().when('role', {
     is: 'STUDENT',
