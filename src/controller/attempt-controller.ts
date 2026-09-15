@@ -207,13 +207,29 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
             },
         });
 
-        // Only count top-level questions (STORY_GROUP children answered separately are scored by parent context)
-        const allQuestions = await prisma.questions.findMany({
-            where: { quizId: attempt.quizId, deleted_at: null, parentId: null },
+        // ── Question retrieval & Scorable question selection ──────────────────
+        // Retrieve top-level questions and active children for STORY_GROUP containers
+        const topLevelQuestions = await prisma.questions.findMany({
+            where:   { quizId: attempt.quizId, deleted_at: null, parentId: null },
+            include: {
+                children: {
+                    where: { deleted_at: null },
+                },
+            },
         });
+
+        // Scorable questions: all normal questions + STORY_GROUP children, excluding STORY_GROUP container parents
+        const scorableQuestions = topLevelQuestions.flatMap(q =>
+            q.question_type === 'STORY_GROUP'
+                ? q.children.filter(c => c.question_type !== 'STORY_GROUP')
+                : [q]
+        );
+        const scorableQuestionIds = new Set(scorableQuestions.map(q => q.id));
 
         let correct = 0, wrong = 0, score = 0;
         for (const ans of userAnswers) {
+            if (!scorableQuestionIds.has(ans.questionsId)) continue;
+
             const qType      = ans.questions.question_type;
             const allowMulti = ans.questions.allow_multiple_answers;
             const isStrict   = ans.questions.is_strict;
@@ -266,14 +282,15 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
             }
         }
 
-        const total_questions = allQuestions.length;
-        const skipped         = total_questions - userAnswers.length;
-        const maxScore        = allQuestions.reduce((a, q) => a + q.poin, 0);
-        const normalizedScore = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-        const accuracy        = (correct + wrong) > 0
+        const total_questions       = scorableQuestions.length;
+        const answeredScorableCount = userAnswers.filter(ans => scorableQuestionIds.has(ans.questionsId)).length;
+        const skipped               = Math.max(0, total_questions - answeredScorableCount);
+        const maxScore              = scorableQuestions.reduce((a, q) => a + q.poin, 0);
+        const normalizedScore       = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+        const accuracy              = (correct + wrong) > 0
             ? Math.round((correct / (correct + wrong)) * 100)
             : 0;
-        const xp_earned       = calculateXP(normalizedScore, attempt.quiz.difficulty);
+        const xp_earned             = calculateXP(normalizedScore, attempt.quiz.difficulty);
 
         // ── Update attempt ─────────────────────────────────────────────────────
         await prisma.attempt.update({
@@ -281,7 +298,7 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
             data:  { finished_time: now, isFinished: true },
         });
 
-        const hasEssay = allQuestions.some(q => q.question_type === 'ESSAY' || q.question_type === 'SHORT_ANSWER');
+        const hasEssay = scorableQuestions.some(q => q.question_type === 'ESSAY' || q.question_type === 'SHORT_ANSWER');
         const reviewStatus = hasEssay ? 'WAITING_REVIEW' : 'AUTO_GRADED';
 
         // ── Simpan skor ────────────────────────────────────────────────────────
