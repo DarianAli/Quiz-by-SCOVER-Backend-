@@ -292,40 +292,47 @@ export const submitAttempt = async (req: Request, res: Response): Promise<void> 
             : 0;
         const xp_earned             = calculateXP(normalizedScore, attempt.quiz.difficulty);
 
-        // ── Update attempt ─────────────────────────────────────────────────────
-        await prisma.attempt.update({
-            where: { id: attempt.id },
-            data:  { finished_time: now, isFinished: true },
-        });
-
         const hasEssay = scorableQuestions.some(q => q.question_type === 'ESSAY' || q.question_type === 'SHORT_ANSWER');
         const reviewStatus = hasEssay ? 'WAITING_REVIEW' : 'AUTO_GRADED';
 
-        // ── Simpan skor ────────────────────────────────────────────────────────
-        await prisma.scores.create({
-            data: {
-                uuid:            crypto.randomUUID(),
-                userId:          user.idUser,
-                quizId:          attempt.quizId,
-                attemptId:       attempt.id,
-                total_questions,
-                correct,
-                wrong,
-                skipped,
-                score:           normalizedScore,
-                accuracy,
-                xp_earned,
-                start_time:      started,
-                finished_time:   now,
-                duration_used:   durUsedMin,
-                review_status:   reviewStatus,
-            },
+        // ── Atomic core: attempt.update + scores.create ────────────────────────
+        // If score persistence fails, the attempt is rolled back to its pre-submit
+        // state and never left in a "completed-without-score" limbo.
+        // updateStreak and activity_log.create are intentionally outside the
+        // transaction: they are idempotent / append-only operations that must not
+        // hold a DB lock beyond the critical write pair, and their failure should
+        // not roll back the committed score.
+        await prisma.$transaction(async (tx) => {
+            await tx.attempt.update({
+                where: { id: attempt.id },
+                data:  { finished_time: now, isFinished: true },
+            });
+
+            await tx.scores.create({
+                data: {
+                    uuid:            crypto.randomUUID(),
+                    userId:          user.idUser,
+                    quizId:          attempt.quizId,
+                    attemptId:       attempt.id,
+                    total_questions,
+                    correct,
+                    wrong,
+                    skipped,
+                    score:           normalizedScore,
+                    accuracy,
+                    xp_earned,
+                    start_time:      started,
+                    finished_time:   now,
+                    duration_used:   durUsedMin,
+                    review_status:   reviewStatus,
+                },
+            });
         });
 
-        // ── Update streak ──────────────────────────────────────────────────────
+        // ── Update streak (best-effort, outside transaction) ───────────────────
         await updateStreak(user.idUser);
 
-        // ── Log aktivitas ──────────────────────────────────────────────────────
+        // ── Log aktivitas (best-effort, outside transaction) ───────────────────
         await prisma.activity_log.create({
             data: {
                 userId: user.idUser,
