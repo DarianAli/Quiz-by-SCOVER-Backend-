@@ -643,8 +643,17 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
     const answers = await prisma.answers.findMany({
         where: { attemptId: score.attemptId },
         include: {
-            questions: { select: { question_text: true, order_index: true } },
-            options:   { select: { is_correct: true } },
+            questions: {
+                select: {
+                    question_text:  true,
+                    order_index:    true,
+                    question_type:  true,
+                    is_strict:      true,
+                    allow_multiple_answers: true,
+                    options: { select: { id: true, option_text: true, is_correct: true } },
+                },
+            },
+            options: { select: { is_correct: true } },
         },
         orderBy: { questions: { order_index: "asc" } },
     });
@@ -652,20 +661,64 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
     const allQuestions = await prisma.questions.findMany({
         where: { quizId: quiz.id, deleted_at: null },
         orderBy: { order_index: "asc" },
-        select: { id: true, question_text: true, order_index: true },
+        select: { id: true, question_text: true, order_index: true, question_type: true },
     });
 
     const answeredMap = new Map(answers.map(a => [a.questionsId, a]));
 
     const questionBreakdown = allQuestions.map((q, idx) => {
-        const ans = answeredMap.get(q.id);
+        const ans        = answeredMap.get(q.id);
+        const answerText = ans?.answer_text ?? null;
+        const qType      = ans?.questions.question_type ?? q.question_type;
+        let isCorrect    = false;
+
+        if (ans) {
+            if (qType === "FILL_BLANK") {
+                // Re-evaluate using the same logic as the auto-grader
+                if (answerText) {
+                    const student        = answerText.trim();
+                    const isStrict       = ans.questions.is_strict;
+                    const correctOptions = ans.questions.options.filter(o => o.is_correct);
+                    isCorrect = correctOptions.some(opt => {
+                        const correct = opt.option_text.trim();
+                        return isStrict ? student === correct : student.toLowerCase() === correct.toLowerCase();
+                    });
+                }
+            } else if (qType === "MULTIPLE_COMPLEX" || ans.questions.allow_multiple_answers) {
+                // Re-evaluate exact-set match
+                if (answerText) {
+                    const selectedIds = answerText.split(",").map(Number).filter(n => !isNaN(n));
+                    const correctIds  = new Set(ans.questions.options.filter(o => o.is_correct).map(o => o.id));
+                    const selectedSet = new Set(selectedIds);
+                    isCorrect = correctIds.size === selectedSet.size;
+                    if (isCorrect) {
+                        for (const id of correctIds) {
+                            if (!selectedSet.has(id)) { isCorrect = false; break; }
+                        }
+                    }
+                }
+            } else if (qType === "ESSAY" || qType === "SHORT_ANSWER") {
+                // Manual-review types: never mark as auto-correct
+                isCorrect = false;
+            } else {
+                // MULTIPLE_CHOICE, TRUE_FALSE: use the joined option record
+                isCorrect = ans.options?.is_correct ?? false;
+            }
+        }
+
+        // Determine if this is a manually-reviewed type so the frontend can
+        // show "Menunggu Penilaian" only for genuinely manual questions.
+        const isManualReview = qType === "ESSAY" || qType === "SHORT_ANSWER";
+
         return {
-            question_index:    idx + 1,
-            question_text:     q.question_text,
+            question_index:     idx + 1,
+            question_text:      q.question_text,
+            question_type:      qType,
             selected_option_id: ans?.optionsId ?? null,
-            answer_text:       ans?.answer_text ?? null,
-            is_correct:        ans?.options?.is_correct ?? false,
-            is_skipped:        !ans,
+            answer_text:        answerText,
+            is_correct:         isCorrect,
+            is_skipped:         !ans,
+            is_manual_review:   isManualReview && !!answerText,
         };
     });
 

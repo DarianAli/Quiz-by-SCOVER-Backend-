@@ -1,6 +1,5 @@
-import { PrismaClient, Role } from "@prisma/client";
-
-const prisma = new PrismaClient
+import { Role } from "@prisma/client";
+import prisma from "../config/prisma.js";
 
 // ─── Tentor Dashboard ─────────────────────────────────────────────────────────
 
@@ -752,27 +751,82 @@ export async function reviewTentorSubmission(tentorId: number, attemptId: number
     // Recalculate Total Score
     const allAnswers = await prisma.answers.findMany({
         where: { attemptId: attempt.id },
-        include: { options: true, questions: true }
+        include: {
+            options: true,
+            questions: {
+                include: { options: true }
+            }
+        }
     });
 
     let correct = 0, wrong = 0, totalScoreRaw = 0;
     for (const ans of allAnswers) {
-        if (ans.options) {
-            // MC / TF
-            if (ans.options.is_correct) {
-                correct++;
-                totalScoreRaw += ans.questions.poin;
+        if (ans.questions.deleted_at !== null || ans.questions.question_type === 'STORY_GROUP') {
+            continue;
+        }
+
+        const qType      = ans.questions.question_type;
+        const allowMulti = ans.questions.allow_multiple_answers;
+        const isStrict   = ans.questions.is_strict;
+        const poin       = ans.questions.poin;
+
+        if (qType === 'MULTIPLE_COMPLEX' || allowMulti) {
+            // Multiple Complex: exact set match
+            if (ans.answer_text) {
+                const selectedIds = ans.answer_text.split(",").map(Number).filter(n => !isNaN(n));
+                const allOpts     = ans.questions.options;
+                const correctIds  = new Set(allOpts.filter(o => o.is_correct).map(o => o.id));
+                const selectedSet = new Set(selectedIds);
+                let isCorrectMC   = correctIds.size === selectedSet.size;
+                if (isCorrectMC) {
+                    for (const id of correctIds) {
+                        if (!selectedSet.has(id)) { isCorrectMC = false; break; }
+                    }
+                }
+                if (isCorrectMC) {
+                    correct++;
+                    totalScoreRaw += poin;
+                } else {
+                    wrong++;
+                }
             } else {
                 wrong++;
             }
-        } else if (ans.questions.question_type === 'ESSAY' || ans.questions.question_type === 'SHORT_ANSWER') {
+        } else if (qType === 'FILL_BLANK') {
+            // Fill Blank: match any correct option
+            if (ans.answer_text) {
+                const student = ans.answer_text.trim();
+                const correctOptions = ans.questions.options.filter(o => o.is_correct);
+                const isCorrectFB = student.length > 0 && correctOptions.some(opt => {
+                    const correctText = opt.option_text.trim();
+                    if (isStrict) return student === correctText;
+                    return student.toLowerCase() === correctText.toLowerCase();
+                });
+                if (isCorrectFB) {
+                    correct++;
+                    totalScoreRaw += poin;
+                } else {
+                    wrong++;
+                }
+            } else {
+                wrong++;
+            }
+        } else if (qType === 'ESSAY' || qType === 'SHORT_ANSWER') {
             // Add manually graded score
             totalScoreRaw += ans.score || 0;
+        } else if (ans.options) {
+            // MC / TF
+            if (ans.options.is_correct) {
+                correct++;
+                totalScoreRaw += poin;
+            } else {
+                wrong++;
+            }
         }
     }
 
     const allQuestions = await prisma.questions.findMany({
-        where: { quizId: attempt.quizId, deleted_at: null }
+        where: { quizId: attempt.quizId, deleted_at: null, question_type: { not: 'STORY_GROUP' } }
     });
     const maxScore = allQuestions.reduce((a, q) => a + q.poin, 0);
     const normalizedScore = maxScore > 0 ? Math.round((totalScoreRaw / maxScore) * 100) : 0;

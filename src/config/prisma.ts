@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 
 // ─── Models subject to soft-delete ───────────────────────────────────────────
 // Sesuaikan dengan nama model di schema (@@map names tidak dipakai di Prisma client)
-const SOFT_DELETE_MODELS = ["user", "subject", "quiz", "questions"] as const;
+const SOFT_DELETE_MODELS = ["user", "subject", "quiz", "questions", "module", "subjectLevel"] as const;
 type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];
 
 function isSoft(model: string): model is SoftDeleteModel {
