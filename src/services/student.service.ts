@@ -1,5 +1,8 @@
 import prisma from "../config/prisma.js";
-import { calculateAverageScore } from "./student-statistics.service.js";
+import {
+    prefetchSubjectsWithScores,
+    computeAverageScoreFromSubjects,
+} from "./student-statistics.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,7 +74,11 @@ export async function getStudentDashboard(userId: number, pageArg: number = 1, l
 
     // ── Score aggregations ─────────────────────────────────────────────────────
     const totalScoreSum = allScores.reduce((acc, s) => acc + s.score, 0);
-    const avgScore      = await calculateAverageScore(userId, user.classId);
+
+    // Prefetch all published-quiz latest scores for this class in ONE query, then
+    // compute overall and per-subject averages in-memory (eliminates N+1).
+    const prefetchedScores = await prefetchSubjectsWithScores(userId, user.classId);
+    const avgScore         = computeAverageScoreFromSubjects(prefetchedScores);
 
     const totalCorrect  = allScores.reduce((acc, s) => acc + s.correct, 0);
     const totalAnswered = allScores.reduce(
@@ -145,12 +152,13 @@ export async function getStudentDashboard(userId: number, pageArg: number = 1, l
     }
 
     // ── Subject mastery ────────────────────────────────────────────────────────
-    const subjectMastery = await Promise.all(subjectClasses.map(async sc => {
+    // avgSc computed in-memory from prefetchedScores — no additional DB queries.
+    const subjectMastery = subjectClasses.map(sc => {
         const allQuizzes = sc.subject.modules.flatMap(m => m.quizzes);
         const subjectQuizIds = allQuizzes.map(q => q.id);
         const subjectScores  = allScores.filter(s => subjectQuizIds.includes(s.quizId));
         const completedCount = new Set(subjectScores.map(s => s.quizId)).size;
-        const avgSc          = await calculateAverageScore(userId, user.classId, sc.subject.uuid);
+        const avgSc          = computeAverageScoreFromSubjects(prefetchedScores, sc.subject.uuid);
 
         return {
             subject_name:       sc.subject.subject_name,
@@ -159,9 +167,10 @@ export async function getStudentDashboard(userId: number, pageArg: number = 1, l
                 : 0,
             completed: completedCount,
             total:     allQuizzes.length,
+
             average_score: avgSc,
         };
-    }));
+    });
 
     const moduleProgress = subjectClasses.flatMap(sc => {
         return sc.subject.modules.map(m => {
@@ -322,7 +331,11 @@ export async function getStudentSubjects(userId: number) {
         },
     });
 
-    return Promise.all(subjectClasses.map(async sc => {
+    // Prefetch PUBLISHED quiz latest scores for all subjects in one query so
+    // per-subject average computation below is purely in-memory (no N+1).
+    const prefetchedScores = await prefetchSubjectsWithScores(userId, user.classId);
+
+    return subjectClasses.map(sc => {
         const subject = sc.subject;
         const allQuizzes = subject.modules.flatMap(m => m.quizzes);
         const totalQuiz = allQuizzes.length;
@@ -334,7 +347,8 @@ export async function getStudentSubjects(userId: number) {
         );
         const completedQuiz = completedQuizIds.size;
 
-        const avgScore = await calculateAverageScore(userId, user.classId, subject.uuid);
+        // In-memory — no additional DB query per subject.
+        const avgScore = computeAverageScoreFromSubjects(prefetchedScores, subject.uuid);
 
         const estimatedTime = allQuizzes.reduce((acc, q) => acc + q.duration, 0);
 
@@ -349,7 +363,7 @@ export async function getStudentSubjects(userId: number) {
                 : 0,
             estimated_time: estimatedTime,
         };
-    }));
+    });
 }
 
 // ─── Student Subject Detail (with Quiz List) ──────────────────────────────────
@@ -453,7 +467,14 @@ export async function getStudentSubjectDetail(userId: number, subjectUuid: strin
     });
 
     const completedCount = quizzes.filter(q => q.student_status === "COMPLETED").length;
-    const avgScore       = await calculateAverageScore(userId, user.classId, subject.uuid);
+    // The subject query already includes published quizzes with the latest score per quiz
+    // for this user (same filters as calculateAverageScore). Compute in-memory — no extra query.
+    const avgScore       = computeAverageScoreFromSubjects([{
+        uuid:    subject.uuid,
+        modules: subject.modules.map(m => ({
+            quizzes: m.quizzes.map(q => ({ scores: q.scores.map(s => ({ score: s.score })) })),
+        })),
+    }], subject.uuid);
     const estimatedTime  = allQuizzes.reduce((a, q) => a + q.duration, 0);
 
     return {
@@ -916,7 +937,11 @@ export async function getStudentProgress(userId: number) {
         orderBy: { created_at: "asc" },
     });
 
-    const avgScore = await calculateAverageScore(userId, user.classId);
+    // Prefetch all published-quiz latest scores for this class in ONE query.
+    // Both the overall average (line below) and every per-subject average inside
+    // the map are computed in-memory from this single result — eliminates N+1.
+    const prefetchedScores = await prefetchSubjectsWithScores(userId, user.classId);
+    const avgScore         = computeAverageScoreFromSubjects(prefetchedScores);
 
     // ── Subject progress ───────────────────────────────────────────────────────
     const subjectClasses = await prisma.subjectClass.findMany({
@@ -937,13 +962,14 @@ export async function getStudentProgress(userId: number) {
         },
     });
 
-    const subjectProgress = await Promise.all(subjectClasses.map(async sc => {
+    const subjectProgress = subjectClasses.map(sc => {
         const s           = sc.subject;
         const allQuizzes  = s.modules.flatMap(m => m.quizzes);
         const quizIds     = allQuizzes.map(q => q.id);
         const subScores   = allScores.filter(sc2 => quizIds.includes(sc2.quizId));
         const completed   = new Set(subScores.map(s2 => s2.quizId)).size;
-        const avgScore    = await calculateAverageScore(userId, user.classId, s.uuid);
+        // In-memory — no additional DB query per subject.
+        const avgScore    = computeAverageScoreFromSubjects(prefetchedScores, s.uuid);
         const mastery     = allQuizzes.length > 0
             ? Math.round((completed / allQuizzes.length) * 100)
             : 0;
@@ -971,7 +997,7 @@ export async function getStudentProgress(userId: number) {
             mastery_percentage: mastery,
             trend,
         };
-    }));
+    });
 
     // ── Monthly performance (last 6 months) ───────────────────────────────────
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
