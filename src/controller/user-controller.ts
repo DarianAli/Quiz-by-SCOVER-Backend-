@@ -42,6 +42,11 @@ export const createUser = async (request: Request, response: Response): Promise<
             return;
         }
 
+        if (role !== "STUDENT") {
+            badRequest(response, "Role must be STUDENT.");
+            return;
+        }
+
         if (classId) {
             const findClass = await prisma.classes.findFirst({ where: { id: Number(classId) } });
             if (!findClass) { notFound(response, "Class not found."); return; }

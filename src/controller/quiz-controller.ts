@@ -114,6 +114,7 @@ export const getQuizByUuid = async (req: Request, res: Response): Promise<void> 
                         options: {
                             orderBy: { order_index: "asc" },
                         },
+                        children: { where: { deleted_at: null }, orderBy: { order_index: "asc" }, include: { options: { orderBy: { order_index: "asc" } }, question_images: { orderBy: { order_index: "asc" } } } },
                         question_images: {
                             orderBy: { order_index: "asc" },
                         },
@@ -265,14 +266,14 @@ export const updateQuiz = async (req: Request, res: Response): Promise<void> => 
     }
 };
 
-// ─── DELETE /quiz/delete/:id (soft delete via Prisma extension) ─────────────
+// ─── DELETE /quiz/delete/:uuid (soft delete via Prisma extension) ────────────
 export const deleteQuiz = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { id } = req.params;
+        const { uuid } = req.params;
 
-        const where = !isNaN(Number(id))
-            ? { id: Number(id) }
-            : { uuid: String(id) };
+        const where = !isNaN(Number(uuid))
+            ? { id: Number(uuid) }
+            : { uuid: String(uuid) };
 
         const quiz = await prisma.quiz.findFirst({ where });
         if (!quiz) { notFound(res, "Quiz tidak ditemukan."); return; }

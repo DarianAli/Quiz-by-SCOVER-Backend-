@@ -1,5 +1,8 @@
 import prisma from "../config/prisma.js";
-import { calculateAverageScore } from "./student-statistics.service.js";
+import {
+    prefetchSubjectsWithScores,
+    computeAverageScoreFromSubjects,
+} from "./student-statistics.service.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,7 +74,11 @@ export async function getStudentDashboard(userId: number, pageArg: number = 1, l
 
     // ── Score aggregations ─────────────────────────────────────────────────────
     const totalScoreSum = allScores.reduce((acc, s) => acc + s.score, 0);
-    const avgScore      = await calculateAverageScore(userId, user.classId);
+
+    // Prefetch all published-quiz latest scores for this class in ONE query, then
+    // compute overall and per-subject averages in-memory (eliminates N+1).
+    const prefetchedScores = await prefetchSubjectsWithScores(userId, user.classId);
+    const avgScore         = computeAverageScoreFromSubjects(prefetchedScores);
 
     const totalCorrect  = allScores.reduce((acc, s) => acc + s.correct, 0);
     const totalAnswered = allScores.reduce(
@@ -145,12 +152,13 @@ export async function getStudentDashboard(userId: number, pageArg: number = 1, l
     }
 
     // ── Subject mastery ────────────────────────────────────────────────────────
-    const subjectMastery = await Promise.all(subjectClasses.map(async sc => {
+    // avgSc computed in-memory from prefetchedScores — no additional DB queries.
+    const subjectMastery = subjectClasses.map(sc => {
         const allQuizzes = sc.subject.modules.flatMap(m => m.quizzes);
         const subjectQuizIds = allQuizzes.map(q => q.id);
         const subjectScores  = allScores.filter(s => subjectQuizIds.includes(s.quizId));
         const completedCount = new Set(subjectScores.map(s => s.quizId)).size;
-        const avgSc          = await calculateAverageScore(userId, user.classId, sc.subject.uuid);
+        const avgSc          = computeAverageScoreFromSubjects(prefetchedScores, sc.subject.uuid);
 
         return {
             subject_name:       sc.subject.subject_name,
@@ -159,9 +167,10 @@ export async function getStudentDashboard(userId: number, pageArg: number = 1, l
                 : 0,
             completed: completedCount,
             total:     allQuizzes.length,
+
             average_score: avgSc,
         };
-    }));
+    });
 
     const moduleProgress = subjectClasses.flatMap(sc => {
         return sc.subject.modules.map(m => {
@@ -322,7 +331,11 @@ export async function getStudentSubjects(userId: number) {
         },
     });
 
-    return Promise.all(subjectClasses.map(async sc => {
+    // Prefetch PUBLISHED quiz latest scores for all subjects in one query so
+    // per-subject average computation below is purely in-memory (no N+1).
+    const prefetchedScores = await prefetchSubjectsWithScores(userId, user.classId);
+
+    return subjectClasses.map(sc => {
         const subject = sc.subject;
         const allQuizzes = subject.modules.flatMap(m => m.quizzes);
         const totalQuiz = allQuizzes.length;
@@ -334,7 +347,8 @@ export async function getStudentSubjects(userId: number) {
         );
         const completedQuiz = completedQuizIds.size;
 
-        const avgScore = await calculateAverageScore(userId, user.classId, subject.uuid);
+        // In-memory — no additional DB query per subject.
+        const avgScore = computeAverageScoreFromSubjects(prefetchedScores, subject.uuid);
 
         const estimatedTime = allQuizzes.reduce((acc, q) => acc + q.duration, 0);
 
@@ -349,7 +363,7 @@ export async function getStudentSubjects(userId: number) {
                 : 0,
             estimated_time: estimatedTime,
         };
-    }));
+    });
 }
 
 // ─── Student Subject Detail (with Quiz List) ──────────────────────────────────
@@ -453,7 +467,14 @@ export async function getStudentSubjectDetail(userId: number, subjectUuid: strin
     });
 
     const completedCount = quizzes.filter(q => q.student_status === "COMPLETED").length;
-    const avgScore       = await calculateAverageScore(userId, user.classId, subject.uuid);
+    // The subject query already includes published quizzes with the latest score per quiz
+    // for this user (same filters as calculateAverageScore). Compute in-memory — no extra query.
+    const avgScore       = computeAverageScoreFromSubjects([{
+        uuid:    subject.uuid,
+        modules: subject.modules.map(m => ({
+            quizzes: m.quizzes.map(q => ({ scores: q.scores.map(s => ({ score: s.score })) })),
+        })),
+    }], subject.uuid);
     const estimatedTime  = allQuizzes.reduce((a, q) => a + q.duration, 0);
 
     return {
@@ -643,8 +664,17 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
     const answers = await prisma.answers.findMany({
         where: { attemptId: score.attemptId },
         include: {
-            questions: { select: { question_text: true, order_index: true } },
-            options:   { select: { is_correct: true } },
+            questions: {
+                select: {
+                    question_text:  true,
+                    order_index:    true,
+                    question_type:  true,
+                    is_strict:      true,
+                    allow_multiple_answers: true,
+                    options: { select: { id: true, option_text: true, is_correct: true } },
+                },
+            },
+            options: { select: { is_correct: true } },
         },
         orderBy: { questions: { order_index: "asc" } },
     });
@@ -652,20 +682,64 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
     const allQuestions = await prisma.questions.findMany({
         where: { quizId: quiz.id, deleted_at: null },
         orderBy: { order_index: "asc" },
-        select: { id: true, question_text: true, order_index: true },
+        select: { id: true, question_text: true, order_index: true, question_type: true },
     });
 
     const answeredMap = new Map(answers.map(a => [a.questionsId, a]));
 
     const questionBreakdown = allQuestions.map((q, idx) => {
-        const ans = answeredMap.get(q.id);
+        const ans        = answeredMap.get(q.id);
+        const answerText = ans?.answer_text ?? null;
+        const qType      = ans?.questions.question_type ?? q.question_type;
+        let isCorrect    = false;
+
+        if (ans) {
+            if (qType === "FILL_BLANK") {
+                // Re-evaluate using the same logic as the auto-grader
+                if (answerText) {
+                    const student        = answerText.trim();
+                    const isStrict       = ans.questions.is_strict;
+                    const correctOptions = ans.questions.options.filter(o => o.is_correct);
+                    isCorrect = correctOptions.some(opt => {
+                        const correct = opt.option_text.trim();
+                        return isStrict ? student === correct : student.toLowerCase() === correct.toLowerCase();
+                    });
+                }
+            } else if (qType === "MULTIPLE_COMPLEX" || ans.questions.allow_multiple_answers) {
+                // Re-evaluate exact-set match
+                if (answerText) {
+                    const selectedIds = answerText.split(",").map(Number).filter(n => !isNaN(n));
+                    const correctIds  = new Set(ans.questions.options.filter(o => o.is_correct).map(o => o.id));
+                    const selectedSet = new Set(selectedIds);
+                    isCorrect = correctIds.size === selectedSet.size;
+                    if (isCorrect) {
+                        for (const id of correctIds) {
+                            if (!selectedSet.has(id)) { isCorrect = false; break; }
+                        }
+                    }
+                }
+            } else if (qType === "ESSAY" || qType === "SHORT_ANSWER") {
+                // Manual-review types: never mark as auto-correct
+                isCorrect = false;
+            } else {
+                // MULTIPLE_CHOICE, TRUE_FALSE: use the joined option record
+                isCorrect = ans.options?.is_correct ?? false;
+            }
+        }
+
+        // Determine if this is a manually-reviewed type so the frontend can
+        // show "Menunggu Penilaian" only for genuinely manual questions.
+        const isManualReview = qType === "ESSAY" || qType === "SHORT_ANSWER";
+
         return {
-            question_index:    idx + 1,
-            question_text:     q.question_text,
+            question_index:     idx + 1,
+            question_text:      q.question_text,
+            question_type:      qType,
             selected_option_id: ans?.optionsId ?? null,
-            answer_text:       ans?.answer_text ?? null,
-            is_correct:        ans?.options?.is_correct ?? false,
-            is_skipped:        !ans,
+            answer_text:        answerText,
+            is_correct:         isCorrect,
+            is_skipped:         !ans,
+            is_manual_review:   isManualReview && !!answerText,
         };
     });
 
@@ -863,7 +937,11 @@ export async function getStudentProgress(userId: number) {
         orderBy: { created_at: "asc" },
     });
 
-    const avgScore = await calculateAverageScore(userId, user.classId);
+    // Prefetch all published-quiz latest scores for this class in ONE query.
+    // Both the overall average (line below) and every per-subject average inside
+    // the map are computed in-memory from this single result — eliminates N+1.
+    const prefetchedScores = await prefetchSubjectsWithScores(userId, user.classId);
+    const avgScore         = computeAverageScoreFromSubjects(prefetchedScores);
 
     // ── Subject progress ───────────────────────────────────────────────────────
     const subjectClasses = await prisma.subjectClass.findMany({
@@ -884,13 +962,14 @@ export async function getStudentProgress(userId: number) {
         },
     });
 
-    const subjectProgress = await Promise.all(subjectClasses.map(async sc => {
+    const subjectProgress = subjectClasses.map(sc => {
         const s           = sc.subject;
         const allQuizzes  = s.modules.flatMap(m => m.quizzes);
         const quizIds     = allQuizzes.map(q => q.id);
         const subScores   = allScores.filter(sc2 => quizIds.includes(sc2.quizId));
         const completed   = new Set(subScores.map(s2 => s2.quizId)).size;
-        const avgScore    = await calculateAverageScore(userId, user.classId, s.uuid);
+        // In-memory — no additional DB query per subject.
+        const avgScore    = computeAverageScoreFromSubjects(prefetchedScores, s.uuid);
         const mastery     = allQuizzes.length > 0
             ? Math.round((completed / allQuizzes.length) * 100)
             : 0;
@@ -918,7 +997,7 @@ export async function getStudentProgress(userId: number) {
             mastery_percentage: mastery,
             trend,
         };
-    }));
+    });
 
     // ── Monthly performance (last 6 months) ───────────────────────────────────
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
