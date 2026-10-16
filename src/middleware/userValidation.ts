@@ -3,6 +3,21 @@ import Joi from "joi";
 
 
 
+export const createUserByAdminSchema = Joi.object({
+    name: Joi.string().optional(),
+    full_name: Joi.string().optional(),
+    userName: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).min(3).max(30).optional().messages({
+        "string.pattern.base": "Username can only contain letters, numbers, and underscores"
+    }),
+    email: Joi.string().email().required(),
+    password: Joi.string().min(6).max(128).required(),
+    role: Joi.string().valid("STUDENT", "TENTOR", "ADMIN").required(),
+    phone_number: Joi.string().min(10).max(13).optional().allow(""),
+    classId: Joi.number().optional().allow(null, ""),
+    parent_full_name: Joi.string().optional().allow(""),
+    parent_phone_number: Joi.string().min(10).max(13).optional().allow(""),
+}).or("name", "full_name");
+
 export const addDataSchema = Joi.object({
     userName: Joi.string().pattern(/^[a-zA-Z0-9_]+$/).min(3).max(30).required().messages({"string.pattern.base": "Username can only contain letters, numbers, and underscores"}),
     email: Joi.string().email().required(),
@@ -135,4 +150,18 @@ export const updateData = ( request: Request, response: Response, next: NextFunc
     }
     return next()
 }
+
+export const createUserByAdminValidation = (request: Request, response: Response, next: NextFunction) => {
+    const { error } = createUserByAdminSchema.validate(request.body, { abortEarly: false });
+
+    if (error) {
+        response.status(400).json({
+            status: false,
+            success: false,
+            message: error.details.map(it => it.message).join(", ")
+        });
+        return;
+    }
+    return next();
+};
 

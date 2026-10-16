@@ -671,6 +671,7 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
                     question_type:  true,
                     is_strict:      true,
                     allow_multiple_answers: true,
+                    poin:           true,
                     options: { select: { id: true, option_text: true, is_correct: true } },
                 },
             },
@@ -682,7 +683,7 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
     const allQuestions = await prisma.questions.findMany({
         where: { quizId: quiz.id, deleted_at: null },
         orderBy: { order_index: "asc" },
-        select: { id: true, question_text: true, order_index: true, question_type: true },
+        select: { id: true, question_text: true, order_index: true, question_type: true, poin: true },
     });
 
     const answeredMap = new Map(answers.map(a => [a.questionsId, a]));
@@ -740,6 +741,9 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
             is_correct:         isCorrect,
             is_skipped:         !ans,
             is_manual_review:   isManualReview && !!answerText,
+            essay_score:        isManualReview ? (ans?.score ?? null) : undefined,
+            essay_feedback:     isManualReview ? (ans?.feedback ?? null) : undefined,
+            max_poin:           isManualReview ? (q.poin ?? ans?.questions.poin ?? null) : undefined,
         };
     });
 
@@ -763,7 +767,8 @@ export async function getStudentQuizResult(userId: number, quizUuid: string) {
             duration_used:   score.duration_used,
         },
         rank,
-        xp_earned:         score.xp_earned,
+        xp_earned:          score.xp_earned,
+        review_status:      score.review_status,
         question_breakdown: questionBreakdown,
     };
 }
