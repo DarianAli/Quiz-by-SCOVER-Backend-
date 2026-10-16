@@ -20,11 +20,12 @@ function gradeFilBlank(
 
 // ─── Helper: grade a MULTIPLE_COMPLEX answer ──────────────────────────────────
 // Returns true if student selected EXACTLY the set of correct options.
-function gradeMultipleComplex(
+export function gradeMultipleComplex(
     selectedOptionIds: number[],
     allOptions: { id: number; is_correct: boolean }[]
 ): boolean {
     const correctIds = new Set(allOptions.filter(o => o.is_correct).map(o => o.id));
+    if (correctIds.size === 0) return false;
     const selectedSet = new Set(selectedOptionIds);
     if (correctIds.size !== selectedSet.size) return false;
     for (const id of correctIds) {
@@ -235,7 +236,7 @@ export const getQuizReview = async (request: Request, response: Response): Promi
             include: {
                 options: {
                     orderBy: { order_index: "asc" },
-                    select:  { uuid: true, option_text: true, option_image: true, is_correct: true },
+                    select:  { id: true, uuid: true, option_text: true, option_image: true, is_correct: true },
                 },
             },
         });
@@ -261,13 +262,15 @@ export const getQuizReview = async (request: Request, response: Response): Promi
                 }
             } else if (q.question_type === "MULTIPLE_COMPLEX" || q.allow_multiple_answers) {
                 if (answerText) {
-                    // answerText is comma-separated internal option IDs
-                    const selectedIds = answerText.split(",").map(Number).filter(n => !isNaN(n));
-                    // Need full options with IDs — re-query is expensive, so use a trick:
-                    // we must look up the ids from the uuid-based options list
-                    // Note: we already have q.options select but without id; we need ids.
-                    // For review correctness, do a quick lookup:
-                    isCorrect = false; // will be re-graded properly in student.service
+                    const selectedIds = answerText
+                        .split(",")
+                        .map(s => s.trim())
+                        .filter(Boolean)
+                        .map(Number)
+                        .filter(n => !isNaN(n));
+                    isCorrect = gradeMultipleComplex(selectedIds, q.options);
+                } else if (selectedOptId !== null) {
+                    isCorrect = gradeMultipleComplex([selectedOptId], q.options);
                 }
             } else {
                 selectedOption = q.options.find(o =>

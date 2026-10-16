@@ -16,6 +16,7 @@ import {
     sendBulkUploadResponse,
     handleBulkUploadError,
 } from "../services/bulkUserUpload.service.js";
+import { UserService } from "../services/user.service.js";
 
 // ─── POST /user/bulk-upload ──────────────────────────────────────────────────
 export const bulkCreateUsers = async (request: Request, response: Response): Promise<void> => {
@@ -32,71 +33,102 @@ export const bulkCreateUsers = async (request: Request, response: Response): Pro
     }
 };
 
-// ─── POST /user/add ──────────────────────────────────────────────────────────
+// ─── POST /admin/users (Admin-only user creation) ─────────────────────────────
+export const createUserByAdmin = async (request: Request, response: Response): Promise<void> => {
+    try {
+        const {
+            name,
+            full_name,
+            userName,
+            email,
+            password,
+            role,
+            phone_number,
+            parent_full_name,
+            parent_phone_number,
+            classId,
+        } = request.body;
+
+        const newUser = await UserService.createUser({
+            name,
+            full_name,
+            userName,
+            email,
+            password,
+            role,
+            phone_number,
+            parent_full_name,
+            parent_phone_number,
+            classId: classId ? Number(classId) : null,
+        });
+
+        created(response, "Successfully created user.", newUser);
+    } catch (error: any) {
+        if (error.statusCode === 409 || error.code === "CONFLICT") {
+            conflict(response, error.message || "User with this email, username, or phone number already exists.");
+            return;
+        }
+        if (error.statusCode === 404 || error.code === "NOT_FOUND") {
+            notFound(response, error.message || "Class not found.");
+            return;
+        }
+        if (error.statusCode === 400 || error.code === "BAD_REQUEST") {
+            badRequest(response, error.message);
+            return;
+        }
+        console.error("[createUserByAdmin]", error);
+        serverError(response);
+    }
+};
+
+// ─── Legacy user creation (delegated to UserService) ──────────────────────────
 export const createUser = async (request: Request, response: Response): Promise<void> => {
     try {
-        const { userName, email, password, full_name, role, phone_number, parent_full_name, parent_phone_number, classId } = request.body;
+        const {
+            name,
+            full_name,
+            userName,
+            email,
+            password,
+            role,
+            phone_number,
+            parent_full_name,
+            parent_phone_number,
+            classId,
+        } = request.body;
 
-        if (!userName || !email || !password || !role) {
-            badRequest(response, "Username, email, password, and role are required.");
+        if (!userName && !name && !full_name) {
+            badRequest(response, "Name or username is required.");
+            return;
+        }
+        if (!email || !password || !role) {
+            badRequest(response, "Email, password, and role are required.");
             return;
         }
 
-        if (classId) {
-            const findClass = await prisma.classes.findFirst({ where: { id: Number(classId) } });
-            if (!findClass) { notFound(response, "Class not found."); return; }
-        }
-
-        const existingUser = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { email },
-                    { userName },
-                    { phone_number: phone_number || "---" }
-                ]
-            }
-        });
-        const existingAdmin = await prisma.admin.findFirst({
-            where: {
-                OR: [
-                    { email },
-                    { phone_number: phone_number || "---" }
-                ]
-            }
-        });
-
-        if (existingUser || existingAdmin) {
-            conflict(response, "User with this email, username, or phone number already exists.");
-            return;
-        }
-
-        const hashed = await bcrypt.hash(password, 10);
-        const newUser = await prisma.user.create({
-            data: {
-                uuid: uuidv4(),
-                userName,
-                email,
-                password: hashed,
-                full_name,
-                role,
-                phone_number: phone_number || "",
-                parent_full_name,
-                parent_phone_number,
-                classId: classId ? Number(classId) : null,
-            },
-            select: {
-                uuid: true,
-                userName: true,
-                email: true,
-                full_name: true,
-                role: true,
-                phone_number: true,
-                class: true
-            }
+        const newUser = await UserService.createUser({
+            name,
+            full_name,
+            userName,
+            email,
+            password,
+            role,
+            phone_number,
+            parent_full_name,
+            parent_phone_number,
+            classId: classId ? Number(classId) : null,
         });
 
         created(response, "Successfully created a user.", newUser);
-    } catch (error) {
+    } catch (error: any) {
+        if (error.statusCode === 409 || error.code === "CONFLICT") {
+            conflict(response, error.message || "User with this email, username, or phone number already exists.");
+            return;
+        }
+        if (error.statusCode === 404 || error.code === "NOT_FOUND") {
+            notFound(response, error.message || "Class not found.");
+            return;
+        }
         console.error("[createUser]", error);
         serverError(response);
     }

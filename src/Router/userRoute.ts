@@ -1,8 +1,8 @@
 import express, { Request, Response, NextFunction } from "express";
-import { addData, profileData, updateData, updatePasswordDataUser, verifyLogin } from "../middleware/userValidation.js";
+import { profileData, updateData, updatePasswordDataUser, verifyLogin } from "../middleware/userValidation.js";
 import { phoneValidation } from "../validator/phoneValidator.js";
-import { createUser, deleteUser, getAllUser, getById, updatePasswordUser, updatePicture, updateUser } from "../controller/user-controller.js";
-import { deleteLimiter, passwordLimiter, postLimiter, registerLimiter, updateLimiter } from "../middleware/rateLimiter.js";
+import { deleteUser, getAllUser, getById, updatePasswordUser, updatePicture, updateUser } from "../controller/user-controller.js";
+import { deleteLimiter, passwordLimiter, postLimiter, updateLimiter } from "../middleware/rateLimiter.js";
 import { verifyRole, verifyToken } from "../middleware/auth.js";
 import { onlyAdminCanChangeRole } from "../middleware/onlyAdminUpdate.js";
 import { verifyOwnershipOrAdmin } from "../middleware/validation.js";
@@ -26,7 +26,8 @@ const handleUpload = (req: Request, res: Response, next: NextFunction) => {
     });
 };
 
-app.post("/register", [ addData, phoneValidation(["phone_number", "parent_phone_number"])], createUser)
+// POST /user/register — REMOVED: no public registration. Use POST /admin/users (admin-only).
+
 app.post("/bulk-upload", postLimiter, [verifyToken, verifyRole(["ADMIN"]), handleUpload], bulkCreateUsers)
 app.get("/getAll", [verifyToken, verifyRole(["ADMIN"])], getAllUser)
 app.get("/get/:idUser", [verifyToken, verifyRole(["ADMIN", "TENTOR", "STUDENT"]), verifyOwnershipOrAdmin], getById)

@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-09-08T10:07:25.463Z",
+  "projectRoot": "/Users/darian/Desktop/Project/backend/Quiz-by-SCOVER-Backend-",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": true,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1788862045463
+}
